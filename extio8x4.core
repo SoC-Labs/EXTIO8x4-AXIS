@@ -1,0 +1,160 @@
+CAPI=2:
+
+name : soclabs:nanosoc:extio8x4:1.0.0
+
+#provider : https://git.soton.ac.uk/soclabs/
+
+description: FuseSoc packaged simulation testbench for EXTIO8x4 IP and validation
+
+filesets:
+  rtl:
+    file_type : verilogSource
+    files:
+      - rtl/extio8x4_axis_initiator.v
+      - rtl/extio8x4_axis_target.v
+      - rtl/extio8x4_ifsm.v
+      - rtl/extio8x4_sync.v
+      - rtl/extio8x4_tfsm.v
+      - rtl/extio8x4.v
+
+  tb:
+    file_type : verilogSource
+    files:
+      - tb/tb_extio8x4_axis.v
+      - tb/tb_axi_stream_io8_buffer.v
+      - tb/tb_axi_stream_io8_rxd_check_file.v
+      - tb/tb_axi_stream_io8_txd_from_file.v
+      - tb/tb_axi_stream_io8_rxd_to_file.v
+      - tb/asc-test.txt:
+         is_include_file: true
+      - tb/asc-test-ref.log:
+         is_include_file: true
+
+parameters:
+  POWER_PINS:
+    datatype      : int
+    description   : Gate level power pins to ARM libraries and memories
+    paramtype     : vlogdefine
+  ARM_UD_MODEL:
+    datatype      : int
+    description   : Gate level model flag to ARM libraries and memories
+    paramtype     : vlogdefine
+  INITIALIZE_MEMORY:
+    datatype      : int
+    description   : ARM memories initialisation
+    paramtype     : vlogdefine
+  SDF_SIM:
+    datatype      : inttb_axi_stream_io8_txd_from_file
+    description   : SDF annotation enable
+    paramtype     : vlogdefine
+  SCAN_TEST:
+    datatype      : int
+    description   : testbench option to scan in fixed pattern set
+    paramtype     : vlogdefine
+
+#  openlane: {files : [data/sky130.tcl : {file_type : tclSource}]}
+
+targets:
+  default:
+    description: dummy build target (no testbench)
+    filesets: [rtl]
+
+  lint:
+    description: Lint tooling - not yet supported
+    default_tool : spyglass
+    filesets : [rtl]
+    tools:
+      spyglass:
+           mode : +lint
+           spyglass_options:
+             - handlememory yes
+           rule_parameters:
+             - handle_static_caselabels yes
+           policy:
+             - waive -rule W415a
+             - waive -rule W426
+      modelsim:
+           mode : +lint
+    toplevel : extio8x4_axis
+
+  sim:
+    description: RTL simulation testbench
+    default_tool : vcs
+    filesets : [rtl, tb]
+    parameters:
+#      - POWER_PINS=1
+      - ARM_UD_MODEL=1
+      - INITIALIZE_MEMORY=1
+    tools:
+      vcs:
+        mode : +lint
+        vcs_options:
+          # Compile-time options passed to the vcs command
+          - -debug_access+pp
+          - -kdb -debug_access+all
+          - +lint
+          - -timescale=1ns/1ps
+          - +no_notifier
+          - +notimingcheck
+#          - +define+POWER_PINS=1
+          - +define+ARM_UD_MODEL=1
+          - +define+INITIALIZE_MEMORY=1
+        run_options:
+          # Run-time options passed to the simulation itself
+          - -licqueue
+#          - -verdi
+      modelsim:
+        mode : +lint
+        mti_options:
+          - -timescale=1ns/1ps
+          - +no_notifier
+          - +notimingcheck
+        run_options:
+          # Run-time options passed to the simulation itself
+          - -licqueue
+    toplevel : tb_extio8x4_axis
+
+  sim_gui:
+    description: GUI interactive simulation testbench
+    default_tool : vcs
+    filesets : [rtl, tb]
+    parameters:
+#      - POWER_PINS=1
+      - ARM_UD_MODEL=1
+      - INITIALIZE_MEMORY=1
+    tools:
+      vcs:
+        mode : +lint
+        vcs_options:
+          # Compile-time options passed to the vcs command
+          - -debug_access+pp
+          - -kdb -debug_access+all
+          - +lint
+          - -timescale=1ns/1ps
+          - +no_notifier
+          - +notimingcheck
+#          - +define+POWER_PINS=1
+          - +define+ARM_UD_MODEL=1
+          - +define+INITIALIZE_MEMORY=1
+        run_options:
+          # Run-time options passed to the simulation itself
+          - -licqueue
+          - -verdi
+      modelsim:
+        mode : +lint
+        mti_options:
+          - -timescale=1ns/1ps
+          - +no_notifier
+          - +notimingcheck
+        run_options:
+          # Run-time options passed to the simulation itself
+          - -licqueue
+    toplevel : tb_extio8x4_axis
+
+
+  tb_nanosoc: &tb
+    description: testbench build
+    default_tool: vcs
+    filesets: [rtl, tb]
+    toplevel : tb_extio8x4_axis
+
