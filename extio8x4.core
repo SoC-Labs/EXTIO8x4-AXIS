@@ -77,6 +77,16 @@ targets:
            mode : +lint
     toplevel : extio8x4_axis
 
+  fpga:
+    description: FPGA implementation
+    default_tool : vivado
+    filesets : [rtl]
+    parameters:
+#      - POWER_PINS=1
+      - ARM_UD_MODEL=1
+      - INITIALIZE_MEMORY=1
+    toplevel : extio8x4
+
   sim:
     description: RTL simulation testbench
     default_tool : vcs
