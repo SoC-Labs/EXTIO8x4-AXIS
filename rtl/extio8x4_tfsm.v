@@ -61,7 +61,7 @@ wire [7:0] rx0_axis_wdata8;
 wire [7:0] rx1_axis_wdata8;
 
 
-assign ack_nxt = ioreq1_s ^ ioreq2_s;
+wire ack_nxt = ioreq1_s ^ ioreq2_s;
 
 reg ack;
 always @(posedge clk or negedge resetn)
