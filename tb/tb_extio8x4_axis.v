@@ -82,6 +82,7 @@ initial begin
 wire end_of_file1;
 wire end_of_file2;
 wire end_of_file3;
+wire end_of_file4;
 wire end_of_file;
 
 assign testmode = 1'b0;
@@ -242,24 +243,50 @@ always @(posedge clk or negedge resetn)
     .rxd8_data    (M_axis_tx1_tdata8)
   );
 
-assign end_of_file = end_of_file1 & end_of_file2; // & end_of_file3;
+assign end_of_file = end_of_file3 & end_of_file4; // & end_of_file3;
 
 // Subordinate side echo
-
+/*
   assign S_axis_tx0_tready = S_axis_rx0_tready;
   assign S_axis_rx0_tvalid = S_axis_tx0_tvalid;
   assign S_axis_rx0_tdata8 = S_axis_tx0_tdata8;
   assign S_axis_tx1_tready = S_axis_rx1_tready;
   assign S_axis_rx1_tvalid = S_axis_tx1_tvalid;
   assign S_axis_rx1_tdata8 = S_axis_tx1_tdata8;
+*/
+// COMIO out buffer
+  tb_axi_stream_io8_buffer
+    u_tb_xi_stream_loop0 (
+    .aclk       (clk),
+    .aresetn    (resetn),
+    .rxd8_ready (S_axis_tx0_tready),
+    .rxd8_valid (S_axis_tx0_tvalid),
+    .rxd8_data  (S_axis_tx0_tdata8),
+    .txd8_ready (S_axis_rx0_tready),
+    .txd8_valid (S_axis_rx0_tvalid),
+    .txd8_data  (S_axis_rx0_tdata8)
+  );
+
+// COMIO out buffer
+  tb_axi_stream_io8_buffer
+    u_tb_xi_stream_loop1 (
+    .aclk       (clk),
+    .aresetn    (resetn),
+    .rxd8_ready (S_axis_tx1_tready),
+    .rxd8_valid (S_axis_tx1_tvalid),
+    .rxd8_data  (S_axis_tx1_tdata8),
+    .txd8_ready (S_axis_rx1_tready),
+    .txd8_valid (S_axis_rx1_tvalid),
+    .txd8_data  (S_axis_rx1_tdata8)
+  );
 
   tb_axi_stream_io8_rxd_to_file#(
     .RXDFILENAME("S_rxd0_out.log")
   ) u_tb_axi_stream_io_8_rxd_to_file_tx0 (
     .aclk         (clk),
     .aresetn      (resetn),
-    .end_of_file  ( ),
-    .rxd8_ready   ( ), //S_axis_tx0_tready),
+    .end_of_file  (end_of_file3),
+    .rxd8_ready   ( ), //S_axis_tx0_tready),        $finish();
     .rxd8_valid   (S_axis_tx0_tvalid & S_axis_tx0_tready),
     .rxd8_data    (S_axis_tx0_tdata8)
   );
@@ -269,20 +296,30 @@ assign end_of_file = end_of_file1 & end_of_file2; // & end_of_file3;
   ) u_tb_axi_stream_io_8_rxd_to_file_tx1 (
     .aclk         (clk),
     .aresetn      (resetn),
-    .end_of_file  (end_of_file3),
+    .end_of_file  (end_of_file4),
     .rxd8_ready   ( ), //S_axis_tx1_tready),
     .rxd8_valid   (S_axis_tx1_tvalid & S_axis_tx1_tready),
     .rxd8_data    (S_axis_tx1_tdata8)
   );
 
   tb_axi_stream_io8_rxd_check_file#(
-    .FILENAME(ASC_REFFILENAME)
-  ) u_tb_axi_stream_io8_rxd_check_file (
+    .FILENAME(ASC_FILENAME) //ASC_REFFILENAME)
+  ) u_tb_axi_stream_io8_rxd0_check_file (
     .aclk       (clk),
     .aresetn    (resetn),
     .rxd8_ready ( ), //S_axis_tx0_tready), 
     .rxd8_valid (S_axis_tx0_tvalid & S_axis_tx0_tready),
     .rxd8_data  (S_axis_tx0_tdata8)
+  );
+
+  tb_axi_stream_io8_rxd_check_file#(
+    .FILENAME(ASC_FILENAME) //ASC_REFFILENAME)
+  ) u_tb_axi_stream_io8_rxd1_check_file (
+    .aclk       (clk),
+    .aresetn    (resetn),
+    .rxd8_ready ( ), //S_axis_tx1_tready), 
+    .rxd8_valid (S_axis_tx1_tvalid & S_axis_tx1_tready),
+    .rxd8_data  (S_axis_tx1_tdata8)
   );
 
 
@@ -315,7 +352,7 @@ assign end_of_file = end_of_file1 & end_of_file2; // & end_of_file3;
         $display("EXTIO8x4 cycle count = %d", cycle_count);
         $display("EXTIO8x4 rx0 byte count = %d", rx0_byte_count);
         $display("EXTIO8x4 tx0 byte count = %d", tx0_byte_count);
-        $display("EXTIO8x4 rx0 byte count = %d", rx1_byte_count);
+        $display("EXTIO8x4 rx1 byte count = %d", rx1_byte_count);
         $display("EXTIO8x4 tx1 byte count = %d", tx1_byte_count);
         #10000
         $finish();
