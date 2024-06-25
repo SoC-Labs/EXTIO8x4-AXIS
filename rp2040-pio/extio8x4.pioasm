@@ -1,0 +1,162 @@
+; SOCLABS - EXTIO8x4 target PIO device
+;
+; Copyright (c) 2020 Raspberry Pi (Trading) Ltd.
+;
+; SPDX-License-Identifier: BSD-3-Clause
+;
+
+.program extio8x4_sm
+.side_set 1 opt // must be mapped to ACK_PIN in SM0
+
+.define public RQ1_PIN 2
+.define public RQ2_PIN 3
+.define public ACK_PIN 4
+.define public DATA0_PIN 5 // gpio base offset 4-bits [0:3]
+.define public DATAWIDTH 4 // GPIO[8:5] specifically
+
+; 4-bit wide external comms channel supporting 4 virtual channels
+; SM0: 4-bit transfer request flags (RP-TXFIFO0)
+;      12-bit Channel 0 TX channel (RP-RXFIFO0) (cmd[3:0], data[7:0])
+; SM1: 8-bit Channel 1 TX channel (RP-RXFIFO1) (data[7:0])
+; SM2: 8-bit Channel 0 RX channel (RP-TXFIFO2) (data[31:24])
+; SM3: 8-bit Channel 1 RX channel (RP-TXFIFO3) (data[31:24])
+; two-pin gray-coded Requests from SOC (RQ1_PIN, RQ2_PIN)
+; side-signal: {ACK_PIN} handshake to SOC (opt update)
+; DATA : IN[3:0],  OUT[3:0], SET[3:0]
+
+//.wrap_target
+sm0:
+    set pindirs 0b1111 side 0 // drive status onto 4-bit data, Clear ACK (side)
+    set x, 0b1111 // {RXE1, TXF1, RXE0, TXF0} - no_FIFOs ready
+//    set x, 0b1010 // {RXE1, !TXF1, RXE0, !TXF0} - RX_FIFOs ready
+statloop:
+    pull noblock // SM_TXFIFO pending request masks -> OSR (or return X)
+    mov x, osr   // keep copy of flags in X
+    out pins 4   // drive flag values
+    jmp pin cmd4 // exit status update loop if RQ1_PIN asserted
+    jmp statloop // otherwise keep updating any status flag assertions
+ cmd4: // start command transfer
+    set pindirs 0b0000 // tristate for command
+    wait 1 gpio RQ2_PIN side 1 // set first ACK, wait for RQ2 high as ack
+    in pins 4 side 0  //4-bit command, clear first ACK
+    mov osr, ::isr     // bit reverse:: cmd[0], cmd[1] in OSR[31:30]
+    out y, 1           // y=cmd[0] for read/not-write
+    out x, 1           // x=cmd[1] is channnel number one/not-zero
+    wait 0 gpio RQ2_PIN
+    jmp !y, cmdtx     // !cmd[0] for write command
+cmdrx: // start read transfer
+    set pindirs 0b1111 // drive outputs if a read transfer
+    jmp !x, cmdrx0 [4]   // !cmd[1] for read channel 0 (sm2)
+cmdrx1: // cmd[1] for read channel 1 (sm3)
+    irq set 7 [4] // IRQ 4+3 at SM3
+    jmp sm123  // delay input capture for driven output data ?
+cmdrx0: // !cmd[1] for read channel 0 (sm2)
+    irq set 6 [4] // IRQ 4+2 at SM2
+    jmp sm123
+cmdtx: // !cmd[0] for write command
+    jmp !x, datax8 // !cmd[1] for write channel 0 (sm0)
+cmdtx1: // cmd[1] for write channel 1 (sm1)
+    irq set 5 [4] // IRQ 4+1 at SM1
+//.program extio8x4_sm123
+.wrap_target
+sm123:
+    wait 1 irq 4 rel // SM +1, +2 or +3
+datax8:
+    out pins 4 // output high nibble txd (SM0 or SM1)
+    wait 1 gpio RQ2_PIN
+    in pins 4 side 1 // input high nibble rxd (SM2 or SM3), set second ACK
+    out pins 4 // output low nibble txd (SM0 or SM1)
+    wait 0 gpio RQ2_PIN
+    in pins 4 side 0 // input low nibble rxd (SM2 or SM3), clr second ACK
+done:
+    set pindirs 0b0000 // tristate before status
+    wait 0 gpio RQ1_PIN side 1 // assert final ACK and wait for RQ1 low
+.wrap
+
+% c-sdk {
+static inline void extio8x4_sm_program_init(PIO pio, uint sm, uint offset) {
+    pio_sm_config cfg_sm0 = extio8x4_sm_program_get_default_config(offset);
+    pio_sm_config cfg_sm1 = extio8x4_sm_program_get_default_config(offset);
+    pio_sm_config cfg_sm2 = extio8x4_sm_program_get_default_config(offset);
+    pio_sm_config cfg_sm3 = extio8x4_sm_program_get_default_config(offset);
+
+// Map the state machine external handshake pins
+    gpio_init(extio8x4_sm_RQ1_PIN);
+    gpio_set_dir(extio8x4_sm_RQ1_PIN, false); //GPIO_IN);
+    gpio_init(extio8x4_sm_RQ2_PIN);
+    gpio_set_dir(extio8x4_sm_RQ2_PIN, false); //GPIO_IN);
+    pio_gpio_init(pio, extio8x4_sm_ACK_PIN);
+    // and bidirectional 4-bit data bus
+    pio_gpio_init(pio, extio8x4_sm_DATA0_PIN + 0);
+    pio_gpio_init(pio, extio8x4_sm_DATA0_PIN + 1);
+    pio_gpio_init(pio, extio8x4_sm_DATA0_PIN + 2);
+    pio_gpio_init(pio, extio8x4_sm_DATA0_PIN + 3);
+
+// SM0: status, command and TX0
+// suspect may need to reset SM0 before TXFIFO flags written to reinitialize ISR/OSR
+    sm_config_set_in_shift(&cfg_sm0, false, true, 12); // SHL, Autopush on 12 bits (cmd+data)
+    sm_config_set_out_shift(&cfg_sm0, false, false, 32); // SHL, no autopull, 4 bits of status flags
+    sm_config_set_in_pins(&cfg_sm0, extio8x4_sm_DATA0_PIN); // IN data
+    sm_config_set_out_pins(&cfg_sm0, extio8x4_sm_DATA0_PIN, extio8x4_sm_DATAWIDTH); // OUT data
+    sm_config_set_set_pins(&cfg_sm0, extio8x4_sm_DATA0_PIN, extio8x4_sm_DATAWIDTH); // SET pindirs
+    sm_config_set_sideset(&cfg_sm0, 2, true, false); // OPT+ACK bit field
+    sm_config_set_sideset_pins(&cfg_sm0, extio8x4_sm_ACK_PIN);
+    sm_config_set_jmp_pin(&cfg_sm0, extio8x4_sm_RQ1_PIN);
+    sm_config_set_wrap(&cfg_sm0, 0, extio8x4_sm_wrap); // wrap from 0 for SM0
+
+// SM1: TX1
+    sm_config_set_in_shift(&cfg_sm1, false, true, 8); // SHL, Autopush on 8 bits (data)
+    sm_config_set_out_shift(&cfg_sm1, true, false, 32); // SHR, no autopull, (RX dummy)
+    sm_config_set_in_pins(&cfg_sm1, extio8x4_sm_DATA0_PIN); // IN data
+    sm_config_set_out_pins(&cfg_sm1, extio8x4_sm_DATA0_PIN, extio8x4_sm_DATAWIDTH); // OUT data
+    sm_config_set_set_pins(&cfg_sm1, extio8x4_sm_DATA0_PIN, extio8x4_sm_DATAWIDTH); // SET pindirs
+    sm_config_set_sideset(&cfg_sm1, 2, true, false); // OPT+ACK bit field
+    sm_config_set_sideset_pins(&cfg_sm1, extio8x4_sm_ACK_PIN);
+    sm_config_set_jmp_pin(&cfg_sm1, extio8x4_sm_RQ1_PIN);
+    sm_config_set_wrap(&cfg_sm1, extio8x4_sm_wrap_target, extio8x4_sm_wrap);
+    sm_config_fifojoin(&cfg_sm2, PIO_FIFO_JOIN_RX);
+
+// SM2: RX0
+    sm_config_set_in_shift(&cfg_sm2, false, false, 32); // SHL, no autopush (TX dummy))
+    sm_config_set_out_shift(&cfg_sm2, false, true, 8); // SHL, Autopull on 8-bits
+    sm_config_set_in_pins(&cfg_sm2, extio8x4_sm_DATA0_PIN); // IN data
+    sm_config_set_out_pins(&cfg_sm2, extio8x4_sm_DATA0_PIN, extio8x4_sm_DATAWIDTH); // OUT data
+    sm_config_set_set_pins(&cfg_sm2, extio8x4_sm_DATA0_PIN, extio8x4_sm_DATAWIDTH); // SET pindirs
+    sm_config_set_sideset(&cfg_sm2, 2, true, false); // OPT+ACK bit field
+    sm_config_set_sideset_pins(&cfg_sm2, extio8x4_sm_ACK_PIN);
+    sm_config_set_jmp_pin(&cfg_sm2, extio8x4_sm_RQ1_PIN);
+    sm_config_set_wrap(&cfg_sm2, extio8x4_sm_wrap_target, extio8x4_sm_wrap);
+    sm_config_fifojoin(&cfg_sm2, PIO_FIFO_JOIN_TX);
+
+// SM3: RX1
+    sm_config_set_in_shift(&cfg_sm3, false, false, 32); // SHL, no autopush (TX dummy))
+    sm_config_set_out_shift(&cfg_sm3, false, true, 8); // SHL, Autopull on 8-bits
+    sm_config_set_in_pins(&cfg_sm3, extio8x4_sm_DATA0_PIN); // IN data
+    sm_config_set_out_pins(&cfg_sm3, extio8x4_sm_DATA0_PIN, extio8x4_sm_DATAWIDTH); // OUT data
+    sm_config_set_set_pins(&cfg_sm3, extio8x4_sm_DATA0_PIN, extio8x4_sm_DATAWIDTH); // SET pindirs
+    sm_config_set_sideset(&cfg_sm3, 2, true, false); // OPT+ACK bit field
+    sm_config_set_sideset_pins(&cfg_sm3, extio8x4_sm_ACK_PIN);
+    sm_config_set_jmp_pin(&cfg_sm3, extio8x4_sm_RQ1_PIN);
+    sm_config_set_wrap(&cfg_sm3, extio8x4_sm_wrap_target, extio8x4_sm_wrap);
+    sm_config_fifojoin(&cfg_sm3, PIO_FIFO_JOIN_TX);
+
+// Load the configuration, and jump to the start of the program
+    pio_sm_init(pio, 1, offset+extio8x4_sm_wrap_target, &cfg_sm1);
+    pio_sm_init(pio, 2, offset+extio8x4_sm_wrap_target, &cfg_sm2);
+    pio_sm_init(pio, 3, offset+extio8x4_sm_wrap_target, &cfg_sm3);
+    pio_sm_init(pio, 0, offset, &cfg_sm0);
+// Set the state machines running
+    pio_sm_set_enabled(pio, 1, true);
+    pio_sm_set_enabled(pio, 2, true);
+    pio_sm_set_enabled(pio, 3, true);
+    pio_sm_set_enabled(pio, 0, true);
+
+}
+%}
+
+% python {
+sm0 = rp2.StateMachine(0, extio8x4_sm, freq=125000, set_base=Pin(extio8x4_sm_DATA0_PIN))
+sm0 = rp2.StateMachine(1, extio8x4_sm, freq=125000, set_base=Pin(extio8x4_sm_DATA0_PIN))
+sm0 = rp2.StateMachine(2, extio8x4_sm, freq=125000, set_base=Pin(extio8x4_sm_DATA0_PIN))
+sm0 = rp2.StateMachine(3, extio8x4_sm, freq=125000, set_base=Pin(extio8x4_sm_DATA0_PIN))
+%}
