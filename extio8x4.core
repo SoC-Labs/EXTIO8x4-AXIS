@@ -15,7 +15,6 @@ filesets:
       - rtl/extio8x4_ifsm.v
       - rtl/extio8x4_sync.v
       - rtl/extio8x4_tfsm.v
-      - rtl/extio8x4.v
 
   tb:
     file_type : verilogSource
