@@ -37,10 +37,10 @@ module extio8x4_axis_target
   input  wire [3:0] iodata4_i,
   output wire [3:0] iodata4_o,
   output wire [3:0] iodata4_e,
-  output wire [3:0] iodata4_z,
-  output wire       ioreq1_i,
-  output wire       ioreq2_i,
-  input  wire       ioack_o
+  output wire [3:0] iodata4_t,
+  input  wire       ioreq1_a,
+  input  wire       ioreq2_a,
+  output wire       ioack_o
   );
 
 wire       ioreq1_s;
@@ -51,7 +51,7 @@ extio8x4_sync u_extio8x4_sync_ioreq1
   .clk(clk),
   .resetn(resetn),
   .testmode(testmode),
-  .sig_a(ioreq1_i),
+  .sig_a(ioreq1_a),
   .sig_s(ioreq1_s)
   );
 
@@ -60,7 +60,7 @@ extio8x4_sync u_extio8x4_sync_ioreq2
   .clk(clk),
   .resetn(resetn),
   .testmode(testmode),
-  .sig_a(ioreq2_i),
+  .sig_a(ioreq2_a),
   .sig_s(ioreq2_s)
   );
 
@@ -86,7 +86,7 @@ extio8x4_tfsm u_extio8x4_tfsm
   .iodata4_i       ( iodata4_i       ),
   .iodata4_o       ( iodata4_o       ),
   .iodata4_e       ( iodata4_e       ),
-  .iodata4_z       ( iodata4_z       ),
+  .iodata4_t       ( iodata4_t       ),
   .ioreq1_s        ( ioreq1_s        ),
   .ioreq2_s        ( ioreq2_s        ),
   .ioack_o         ( ioack_o         )
@@ -117,9 +117,9 @@ extio8x4_axis_target u_extio8x4_axis_target
   .iodata4_i       ( iodata4_i       ),
   .iodata4_o       ( iodata4_o       ),
   .iodata4_e       ( iodata4_e       ),
-  .iodata4_z       ( iodata4_z       ),
-  .ioreq1_i        ( ioreq1_i        ),
-  .ioreq2_i        ( ioreq2_i        ),
+  .iodata4_t       ( iodata4_t       ),
+  .ioreq1_a        ( ioreq1_i        ),
+  .ioreq2_a        ( ioreq2_i        ),
   .ioack_o         ( ioack_o         )
   );
 

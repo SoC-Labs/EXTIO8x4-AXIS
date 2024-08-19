@@ -32,15 +32,14 @@ module extio8x4_tfsm
   input  wire       axis_tx1_tready, 
   output wire       axis_tx1_tvalid,
   output wire [7:0] axis_tx1_tdata8,
-//  input  wire [1:0] tx_req_last,
 // external io interface
   input  wire [3:0] iodata4_i,
   output wire [3:0] iodata4_o,
   output wire [3:0] iodata4_e,
-  output wire [3:0] iodata4_z,
-  output wire       ioreq1_s,
-  output wire       ioreq2_s,
-  input  wire       ioack_o
+  output wire [3:0] iodata4_t,
+  input  wire       ioreq1_s,
+  input  wire       ioreq2_s,
+  output wire       ioack_o
   );
 
 
@@ -61,7 +60,7 @@ wire [7:0] rx0_axis_wdata8;
 wire [7:0] rx1_axis_wdata8;
 
 
-assign ack_nxt = ioreq1_s ^ ioreq2_s;
+wire ack_nxt = ioreq1_s ^ ioreq2_s;
 
 reg ack;
 always @(posedge clk or negedge resetn)
@@ -149,7 +148,7 @@ assign iodata4_o = ({4{fif_state}} & fifo_stat)
                  ;
 
 assign iodata4_e = {4{|(fsm_state[6:4])}};
-assign iodata4_z = {4{!iodata4_e}};
+assign iodata4_t = {4{!iodata4_e}};
 
 // and ack
 assign rx0_axis_ack = !cmd4[1] &  cmd4[0] & wdl_state & ack_change;
@@ -185,7 +184,7 @@ begin
     rx0_reg9 <= 9'b0_00000000;
   else begin
     if (!rx0_reg9[8] & axis_rx0_tvalid) rx0_reg9 <= {1'b1,axis_rx0_tdata8[7:0]};
-    else if (rx0_reg9[8] & rx0_axis_ack)  rx0_reg9[8] <= 1'b0;
+    else if (rx0_reg9[8] & rx0_axis_ack) rx0_reg9[8] <= 1'b0;
     end
 end
 assign axis_rx0_tready = !rx0_reg9[8];
@@ -258,7 +257,7 @@ extio8x4_ifsm u_extio8x4_tfsm
   .iodata4_i       ( iodata4_i       ),
   .iodata4_o       ( iodata4_o       ),
   .iodata4_e       ( iodata4_e       ),
-  .iodata4_z       ( iodata4_z       ),
+  .iodata4_t       ( iodata4_t       ),
   .ioreq1_s        ( ioreq1_s        ),
   .ioreq2_s        ( ioreq2_s        ),
   .ioack_o         ( ioack_o         )

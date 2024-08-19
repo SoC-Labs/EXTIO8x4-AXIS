@@ -33,11 +33,11 @@ module extio8x4_ifsm
   output wire       axis_tx1_tvalid,
   output wire [7:0] axis_tx1_tdata8,
 // external io interface
-  input  wire [3:0] iodata4_a,
+  input  wire [3:0] iodata4_i,
   input  wire [3:0] iodata4_s,
   output wire [3:0] iodata4_o,
   output wire [3:0] iodata4_e,
-  output wire [3:0] iodata4_z,
+  output wire [3:0] iodata4_t,
   output wire       ioreq1_o,
   output wire       ioreq2_o,
   input  wire       ioack_s
@@ -87,6 +87,19 @@ default: FNmap_patt2code2 = 2'b00; // (illegal seq no)
 endcase
 endfunction
 
+
+reg ack;
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn)
+    ack <= 1'b0;
+  else
+    ack <= ioack_s;
+end
+
+wire ack_change = ack ^ ioack_s;
+
+
 // state[0] = ioreq1
 // state[1] = ioreq2
 // state[2] = CTL4_EN
@@ -95,7 +108,7 @@ endfunction
 // state[5] = WDONE
 // state[6] = RD4H_EN
 // state[7] = RD4L_EN
-// state[7] = RXDONE
+// state[8] = RXDONE
 // state[9] = TX
 
 localparam STAT = 10'b0_000_0000_00;
@@ -242,12 +255,15 @@ begin
 end
 
 wire [3:0] cmd4_nxt;
-/* 
+
 // simplest fixed priority scheme: RX0, RX1, TX0, TX1 (decreasing)
+/*
 assign cmd4_nxt[0] =  (vrx0_req | vrx1_req); // Read/not-write always has priority
 assign cmd4_nxt[1] = !(vrx0_req | vtx0_req);
 */
 assign cmd4_nxt[1:0] = FNmap_patt2code2(FNpriority_seq12x2(active_req4), seq_cnt12);
+/* */
+
 assign cmd4_nxt[3:2] = 2'b00; // fixed 8-bit transfer 
 
 // command resister
@@ -280,11 +296,11 @@ assign iodata4_o = ({4{cmd_state}} & cmd4)
                  ;
 
 assign iodata4_e = {4{|(fsm_state[4:2])}};
-assign iodata4_z = ~iodata4_e;
+assign iodata4_t = ~iodata4_e;
 
 // and ack
-assign rx0_axis_ack = !cmd4[1] & !cmd4[0] & wdone & ioack_s;
-assign rx1_axis_ack =  cmd4[1] & !cmd4[0] & wdone & ioack_s;
+assign rx0_axis_ack = !cmd4[1] & !cmd4[0] & wdone & ack_change;
+assign rx1_axis_ack =  cmd4[1] & !cmd4[0] & wdone & ack_change;
 
 // IO Read data
 // first register high nibble read data
@@ -293,8 +309,8 @@ always @(posedge clk or negedge resetn)
 begin
   if (!resetn)
     rd4_hi <= 4'b0000; // initialize
-  else if (rdh_state & ioack_s)
-    rd4_hi <= iodata4_s[3:0];
+  else if (rdh_state & ack_change)
+    rd4_hi <= iodata4_i[3:0];
 end
 
 reg [3:0] rd4_lo;
@@ -302,15 +318,15 @@ always @(posedge clk or negedge resetn)
 begin
   if (!resetn)
     rd4_lo <= 4'b0000; // initialize
-  else if (rdl_state & !ioack_s)
-    rd4_lo <= iodata4_s[3:0];
+  else if (rdl_state & ack_change)
+    rd4_lo <= iodata4_i[3:0];
 end
 
 assign tx_axis_rdata8 = {rd4_hi[3:0],rd4_lo[3:0]};
 
 // then ack with 8-bit data to selected axis buffer
-assign tx0_axis_ack = !cmd4[1] &  cmd4[0] & rdone & ioack_s;
-assign tx1_axis_ack =  cmd4[1] &  cmd4[0] & rdone & ioack_s;
+assign tx0_axis_ack = !cmd4[1] &  cmd4[0] & rdone & ack_change;
+assign tx1_axis_ack =  cmd4[1] &  cmd4[0] & rdone & ack_change;
            
 endmodule
 
@@ -333,11 +349,11 @@ extio8x4_ifsm u_extio8x4_ifsm
   .axis_tx1_tvalid ( axis_tx1_tvalid ),
   .axis_tx1_tdata8 ( axis_tx1_tdata8 ),
 // external io interface
-  .iodata4_a       ( iodata4_a       ),
+  .iodata4_i       ( iodata4_i       ),
   .iodata4_s       ( iodata4_s       ),
   .iodata4_o       ( iodata4_o       ),
   .iodata4_e       ( iodata4_e       ),
-  .iodata4_z       ( iodata4_z       ),
+  .iodata4_t       ( iodata4_t       ),
   .ioreq1_o        ( ioreq1_o        ),
   .ioreq2_o        ( ioreq2_o        ),
   .ioack_s         ( ioack_s         )

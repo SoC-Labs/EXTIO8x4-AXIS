@@ -34,13 +34,13 @@ module extio8x4_axis_initiator
   output wire       axis_tx1_tvalid,
   output wire [7:0] axis_tx1_tdata8,
 // external io interface
-  input  wire [3:0] iodata4_i,
+  input  wire [3:0] iodata4_a,
   output wire [3:0] iodata4_o,
   output wire [3:0] iodata4_e,
-  output wire [3:0] iodata4_z,
+  output wire [3:0] iodata4_t,
   output wire       ioreq1_o,
   output wire       ioreq2_o,
-  input  wire       ioack_i
+  input  wire       ioack_a
   );
 
 wire       ioack_s;
@@ -51,7 +51,7 @@ extio8x4_sync u_extio8x4_sync_ioack
   .clk(clk),
   .resetn(resetn),
   .testmode(testmode),
-  .sig_a(ioack_i),
+  .sig_a(ioack_a),
   .sig_s(ioack_s)
   );
 
@@ -60,7 +60,7 @@ extio8x4_sync u_extio8x4_sync_iodata0
   .clk(clk),
   .resetn(resetn),
   .testmode(testmode),
-  .sig_a(iodata4_i[0]),
+  .sig_a(iodata4_a[0]),
   .sig_s(iodata4_s[0])
   );
 
@@ -69,7 +69,7 @@ extio8x4_sync u_extio8x4_sync_iodata1
   .clk(clk),
   .resetn(resetn),
   .testmode(testmode),
-  .sig_a(iodata4_i[1]),
+  .sig_a(iodata4_a[1]),
   .sig_s(iodata4_s[1])
   );
 
@@ -78,7 +78,7 @@ extio8x4_sync u_extio8x4_sync_iodata2
   .clk(clk),
   .resetn(resetn),
   .testmode(testmode),
-  .sig_a(iodata4_i[2]),
+  .sig_a(iodata4_a[2]),
   .sig_s(iodata4_s[2])
   );
 
@@ -87,7 +87,7 @@ extio8x4_sync u_extio8x4_sync_iodata3
   .clk(clk),
   .resetn(resetn),
   .testmode(testmode),
-  .sig_a(iodata4_i[3]),
+  .sig_a(iodata4_a[3]),
   .sig_s(iodata4_s[3])
   );
 
@@ -109,11 +109,11 @@ extio8x4_ifsm u_extio8x4_ifsm
   .axis_tx1_tvalid ( axis_tx1_tvalid ),
   .axis_tx1_tdata8 ( axis_tx1_tdata8 ),
 // external io interface
-  .iodata4_a       ( iodata4_i       ),
+  .iodata4_i       ( iodata4_a       ),
   .iodata4_s       ( iodata4_s       ),
   .iodata4_o       ( iodata4_o       ),
   .iodata4_e       ( iodata4_e       ),
-  .iodata4_z       ( iodata4_z       ),
+  .iodata4_t       ( iodata4_t       ),
   .ioreq1_o        ( ioreq1_o        ),
   .ioreq2_o        ( ioreq2_o        ),
   .ioack_s         ( ioack_s         )
@@ -141,13 +141,13 @@ extio8x4_axis_initiator u_extio8x4_axis_initiator
   .axis_tx1_tvalid ( axis_tx1_tvalid ),
   .axis_tx1_tdata8 ( axis_tx1_tdata8 ),
 // external io interface
-  .iodata4_i       ( iodata4_i       ),
+  .iodata4_a       ( iodata4_a       ),
   .iodata4_o       ( iodata4_o       ),
   .iodata4_e       ( iodata4_e       ),
-  .iodata4_z       ( iodata4_z       ),
-  .ioreq1_o        ( ioreq1_o        ),
-  .ioreq2_o        ( ioreq2_o        ),
-  .ioack_i         ( ioack_i         )
+  .iodata4_t       ( iodata4_t       ),
+  .ioreq1_o        ( ioreq1_a        ),
+  .ioreq2_o        ( ioreq2_a        ),
+  .ioack_a         ( ioack_a         )
   );
 
 */
