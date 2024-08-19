@@ -140,6 +140,7 @@ always @(*)
   TXDH: nxt_fsm_state = ( ioack_s) ? TXDL : TXDH;
   TXDL: nxt_fsm_state = (!ioack_s) ? TXDZ : TXDL;
   TXDZ: nxt_fsm_state = ( ioack_s) ? STAT : TXDZ;
+  default:  nxt_fsm_state = STAT;
   endcase
 
 // state update

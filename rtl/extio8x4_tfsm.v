@@ -109,6 +109,7 @@ always @(*)
   TXCZ: nxt_fsm_state = ( ioreq2_s) ? TXCZ : TXDH;
   TXDH: nxt_fsm_state = (!ioreq2_s) ? TXDH : TXDL;
   TXDL: nxt_fsm_state = ( ioreq2_s) ? TXDL : STAZ;
+  default:  nxt_fsm_state = STAT;
   endcase
 
 // state update

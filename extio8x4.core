@@ -74,7 +74,7 @@ targets:
              - waive -rule W426
       modelsim:
            mode : +lint
-    toplevel : extio8x4_axis
+    toplevel : extio8x4_axis_initiator
 
   fpga:
     description: FPGA implementation
@@ -84,7 +84,7 @@ targets:
 #      - POWER_PINS=1
       - ARM_UD_MODEL=1
       - INITIALIZE_MEMORY=1
-    toplevel : extio8x4
+    toplevel : extio8x4_axis_initiator
 
   sim:
     description: RTL simulation testbench
