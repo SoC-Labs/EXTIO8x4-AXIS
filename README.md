@@ -51,7 +51,6 @@ Data
 ## Protocol
 
 
-
 #### Xilinx
 - Tool: Vivado 2019.2
 - Device: Kintex-7 (7k70tfbv676-1)
