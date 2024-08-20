@@ -36,10 +36,12 @@ module tb_axi_stream_io8_txd_from_file
 
    reg       valid;
    reg [7:0] data8;
+   reg       eot; // Ctrl-D encountered
    
    initial
      begin
-       valid <= 0;
+       eot <= 1'b0;
+       valid <= 1'b0;
 //       $timeformat(-9, 0, " ns", 14);
        fd= $fopen(TXDFILENAME,"r");
        if (fd == 0)
@@ -47,21 +49,23 @@ module tb_axi_stream_io8_txd_from_file
        else begin
          @(posedge aresetn);
          ch =  $fgetc(fd);
-         while (ch != `EOF) begin
+         while ((ch != `EOF) && (!eot)) begin
            @(posedge aclk);
            data8 <= (ch & 8'hff);
            valid <= 1'b1;
+           if (ch == 8'h04)
+               eot <= 1'b1;
            @(posedge aclk);
            while (txd8_ready == 1'b0)
              @(posedge aclk);
-           valid <=0;
-           ch =  $fgetc(fd);
-           for (i=0; i <= WAITSTATE; i=i+1)
+           valid <= 1'b0;
+           ch =  (eot) ? `EOF : $fgetc(fd);
+           for (i=0; i <  WAITSTATE; i=i+1)
              @(posedge aclk);
          end
          $write("** %m : file closed after stream TX completed **\n");
          $fclose(fd);
-         valid <= 0;
+         valid <= 1'b0;
        end
      end
 

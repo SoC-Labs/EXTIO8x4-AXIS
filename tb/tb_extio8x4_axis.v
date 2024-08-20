@@ -22,10 +22,8 @@ localparam CLOCK_PHASE = 5;
 
 `ifdef ADP_FILE
   localparam ASC_FILENAME=`ADP_FILE;
-  localparam ASC_REFFILENAME="src/soclabs_nanosoc_extio8x4_1.0.0/tb/asc-test-ref.log";
 `else
   localparam ASC_FILENAME="src/soclabs_nanosoc_extio8x4_1.0.0/tb/asc-test.txt";
-  localparam ASC_REFFILENAME="src/soclabs_nanosoc_extio8x4_1.0.0/tb/asc-test-ref.log";
 `endif
 
 `ifdef VCD_SIM
@@ -125,9 +123,9 @@ extio8x4_axis_initiator u_extio8x4_axis_initiator
 
 extio8x4_axis_target u_extio8x4_axis_target
   (
-  .clk             ( !clk             ),
-  .resetn          ( resetn          ),
-  .testmode        ( testmode        ),
+  .clk             ( !clk              ),
+  .resetn          ( resetn            ),
+  .testmode        ( testmode          ),
 // RX 4-channel AXIS interface
   .axis_rx0_tready ( S_axis_rx0_tready ), 
   .axis_rx0_tvalid ( S_axis_rx0_tvalid ),
@@ -243,9 +241,11 @@ always @(posedge clk or negedge resetn)
     .rxd8_data    (M_axis_tx1_tdata8)
   );
 
-assign end_of_file = end_of_file3 & end_of_file4; // & end_of_file3;
+//assign end_of_file = end_of_file1 & end_of_file2 & end_of_file3 & end_of_file4;
+assign end_of_file = end_of_file3 & end_of_file4;
 
 // Subordinate side echo
+
 /*
   assign S_axis_tx0_tready = S_axis_rx0_tready;
   assign S_axis_rx0_tvalid = S_axis_tx0_tvalid;
@@ -254,7 +254,7 @@ assign end_of_file = end_of_file3 & end_of_file4; // & end_of_file3;
   assign S_axis_rx1_tvalid = S_axis_tx1_tvalid;
   assign S_axis_rx1_tdata8 = S_axis_tx1_tdata8;
 */
-// COMIO out buffer
+ // COMIO out buffer
   tb_axi_stream_io8_buffer
     u_tb_xi_stream_loop0 (
     .aclk       (clk),
@@ -286,7 +286,7 @@ assign end_of_file = end_of_file3 & end_of_file4; // & end_of_file3;
     .aclk         (clk),
     .aresetn      (resetn),
     .end_of_file  (end_of_file3),
-    .rxd8_ready   ( ), //S_axis_tx0_tready),        $finish();
+    .rxd8_ready   ( ), //S_axis_tx0_tready),
     .rxd8_valid   (S_axis_tx0_tvalid & S_axis_tx0_tready),
     .rxd8_data    (S_axis_tx0_tdata8)
   );
@@ -303,7 +303,7 @@ assign end_of_file = end_of_file3 & end_of_file4; // & end_of_file3;
   );
 
   tb_axi_stream_io8_rxd_check_file#(
-    .FILENAME(ASC_FILENAME) //ASC_REFFILENAME)
+    .FILENAME(ASC_FILENAME)
   ) u_tb_axi_stream_io8_rxd0_check_file (
     .aclk       (clk),
     .aresetn    (resetn),
@@ -313,7 +313,7 @@ assign end_of_file = end_of_file3 & end_of_file4; // & end_of_file3;
   );
 
   tb_axi_stream_io8_rxd_check_file#(
-    .FILENAME(ASC_FILENAME) //ASC_REFFILENAME)
+    .FILENAME(ASC_FILENAME)
   ) u_tb_axi_stream_io8_rxd1_check_file (
     .aclk       (clk),
     .aresetn    (resetn),
@@ -349,12 +349,14 @@ assign end_of_file = end_of_file3 & end_of_file4; // & end_of_file3;
   always @(posedge clk)
     begin // : eof_terminate
       if (end_of_file) begin
-        $display("EXTIO8x4 cycle count = %d", cycle_count);
-        $display("EXTIO8x4 rx0 byte count = %d", rx0_byte_count);
-        $display("EXTIO8x4 tx0 byte count = %d", tx0_byte_count);
-        $display("EXTIO8x4 rx1 byte count = %d", rx1_byte_count);
-        $display("EXTIO8x4 tx1 byte count = %d", tx1_byte_count);
         #10000
+        $display("EXTIO8x4 cycle count     = %d", cycle_count);
+        $display("EXTIO8x4 rx0 byte count  = %d", rx0_byte_count);
+        $display("EXTIO8x4 tx0 byte count  = %d", tx0_byte_count);
+        $display("EXTIO8x4 rx1 byte count  = %d", rx1_byte_count);
+        $display("EXTIO8x4 tx1 byte count  = %d", tx1_byte_count);
+        $display("clocks per byte (approx) = %f",
+              (cycle_count/(rx0_byte_count+ rx1_byte_count + tx0_byte_count+tx1_byte_count)));
         $finish();
         end
     end //

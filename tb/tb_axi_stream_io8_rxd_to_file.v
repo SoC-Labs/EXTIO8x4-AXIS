@@ -62,16 +62,20 @@ module tb_axi_stream_io8_rxd_to_file
            data8 <= rxd8_data;
 //         $write("0x%02x", data8);
            ch = (rxd8_data & 8'hff);
+           $fwrite(fd, "%c", ch);
            if  (ch==8'h04) begin // Stop simulation if 0x04 is received
              nxt_end_simulation <= 1'b1;
-             ready <= 1'b1;
              end
-           else
-             $fwrite(fd, "%c", ch);
-//           for (i=0; i <= WAITSTATE; i=i+1)
-//             @(posedge aclk);
+           for (i=0; i < WAITSTATE; i=i+1)
+             @(posedge aclk);
          end
          $write("** %m : log file closed after stream RX terminated **\n");
+           @(posedge aclk);
+           ready <= 1'b1;
+           @(posedge aclk);
+           while (rxd8_valid == 1'b0)
+             @(posedge aclk);
+           ready <=0;
          $fclose(fd);
        end
      end
@@ -82,8 +86,8 @@ always @(posedge aclk or negedge aresetn)
      eof <= 1'b0;
      end
   else begin
-     reg_end_simulation <= nxt_end_simulation;
-     eof <= reg_end_simulation;
+      reg_end_simulation <= nxt_end_simulation;
+      eof <= reg_end_simulation;
      end
      
 assign rxd8_ready = ready ;
