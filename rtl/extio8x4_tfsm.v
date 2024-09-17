@@ -54,6 +54,11 @@ wire rx1_axis_ack;
 wire tx0_axis_ack;
 wire tx1_axis_ack;
 
+reg req_rx0;
+reg req_rx1;
+reg req_tx0;
+reg req_tx1;
+
 // data ports
 wire [7:0] tx_axis_rdata8;
 wire [7:0] rx0_axis_wdata8;
@@ -141,7 +146,7 @@ begin
     cmd4 <= iodata4_i[3:0];
 end
 
-wire [3:0] fifo_stat = ~{rx1_axis_req, tx1_axis_req, rx0_axis_req, tx0_axis_req};
+wire [3:0] fifo_stat = ~{req_tx1, req_rx1, req_tx0, req_rx0 };
 // IO Write Data
 assign iodata4_o = ({4{fif_state}} & fifo_stat)
                  | ({4{wdh_state}} & ((cmd4[1]) ? rx1_axis_wdata8[7:4] : rx0_axis_wdata8[7:4]))
@@ -190,7 +195,7 @@ begin
 end
 assign axis_rx0_tready = !rx0_reg9[8];
 assign rx0_axis_wdata8 =  rx0_reg9[7:0];
-assign rx0_axis_req    =  rx0_reg9[8];
+assign rx0_axis_req    =  rx0_reg9[8] & !fsm_state[2] & !fsm_state[3];
 
 // axis RX2 port interface
 always @(posedge clk or negedge resetn)
@@ -204,7 +209,7 @@ begin
 end
 assign axis_rx1_tready = !rx1_reg9[8];
 assign rx1_axis_wdata8 =  rx1_reg9[7:0];
-assign rx1_axis_req    =  rx1_reg9[8];
+assign rx1_axis_req    =  rx1_reg9[8] & !fsm_state[2] & !fsm_state[3];
 
 // axis TX1 port interface
 always @(posedge clk or negedge resetn)
@@ -233,7 +238,48 @@ end
 assign axis_tx1_tvalid = tx1_reg9[8];
 assign axis_tx1_tdata8[7:0] = tx1_reg9[7:0];
 assign tx1_axis_req = !tx1_reg9[8];
-          
+
+
+// request handshake
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn)
+    req_rx0 <= 1'b0; // avoid X propagation
+  else if (rx0_axis_req & !req_rx0) // capture rx_req front edge
+    req_rx0 <= 1'b1;
+  else if (rx0_axis_ack & req_rx0)
+    req_rx0 <= 1'b0;
+end
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn)
+    req_rx1 <= 1'b0; // avoid X propagation
+  else if (rx1_axis_req & !req_rx1) // capture rx_req front edge
+    req_rx1 <= 1'b1;
+  else if (rx1_axis_ack & req_rx1)
+    req_rx1 <= 1'b0;
+end
+
+// request handshake
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn)
+    req_tx0 <= 1'b0; // avoid X propagation
+  else if (tx0_axis_req & !req_tx0) // capture tx_req front edge
+    req_tx0 <= 1'b1;
+  else if (tx0_axis_ack & req_tx0)
+    req_tx0 <= 1'b0;
+end
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn)
+    req_tx1 <= 1'b0; // avoid X propagation
+  else if (tx1_axis_req & !req_tx1) // capture tx_req front edge
+    req_tx1 <= 1'b1;
+  else if (tx1_axis_ack & req_tx1)
+    req_tx1 <= 1'b0;
+end
+
 endmodule
 
 /*

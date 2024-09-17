@@ -172,10 +172,16 @@ wire rx1_axis_ack;
 wire tx0_axis_ack;
 wire tx1_axis_ack;
 
+reg req_rx0;
+reg req_rx1;
+reg req_tx0;
+reg req_tx1;
+
 // data ports
 wire [7:0] tx_axis_rdata8;
 wire [7:0] rx0_axis_wdata8;
 wire [7:0] rx1_axis_wdata8;
+
 
 // axis RX1 port interface
 always @(posedge clk or negedge resetn)
@@ -233,13 +239,13 @@ assign axis_tx1_tvalid = tx1_reg9[8];
 assign axis_tx1_tdata8[7:0] = tx1_reg9[7:0];
 assign tx1_axis_req = !tx1_reg9[8];
 
-// virtual channel requests, only valid during ststus phase
-wire vtx0_req = status_valid & !iodata4_s[0] & tx0_axis_req;
-wire vrx0_req = status_valid & !iodata4_s[1] & rx0_axis_req;
-wire vtx1_req = status_valid & !iodata4_s[2] & tx1_axis_req;
-wire vrx1_req = status_valid & !iodata4_s[3] & rx1_axis_req;
+// virtual channel requests, only valid during status phase
+wire vtx0_req = status_valid & !iodata4_s[0] & req_tx0;
+wire vrx0_req = status_valid & !iodata4_s[1] & req_rx0;
+wire vtx1_req = status_valid & !iodata4_s[2] & req_tx1;
+wire vrx1_req = status_valid & !iodata4_s[3] & req_rx1;
 
-wire [3:0] active_req4 = {vrx1_req, vtx1_req, vrx0_req, vtx0_req};
+wire [3:0] active_req4 = {vtx1_req, vrx1_req, vtx0_req, vrx0_req};
 
 // any active request
 wire cmd4_req = (vtx0_req | vrx0_req | vtx1_req | vrx1_req);
@@ -257,6 +263,16 @@ end
 
 wire [3:0] cmd4_nxt;
 
+// command resister
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn)
+    cmd4 <= 4'b0000; // invalid xfer pattern
+  else if (cmd4_req)
+    cmd4 <= cmd4_nxt;
+end
+
+
 // simplest fixed priority scheme: RX0, RX1, TX0, TX1 (decreasing)
 /*
 assign cmd4_nxt[0] =  (vrx0_req | vrx1_req); // Read/not-write always has priority
@@ -267,14 +283,56 @@ assign cmd4_nxt[1:0] = FNmap_patt2code2(FNpriority_seq12x2(active_req4), seq_cnt
 
 assign cmd4_nxt[3:2] = 2'b00; // fixed 8-bit transfer 
 
-// command resister
+// write data resister - for the committed channel
+reg [7:0] wdata8;
 always @(posedge clk or negedge resetn)
 begin
   if (!resetn)
-    cmd4 <= 4'b1111; // invalid xfer pattern
-  else if (cmd4_req)
-    cmd4 <= cmd4_nxt;
+    wdata8 <= 8'b00000000; // avoid X propagation
+  else if (start_xfer & !cmd4_nxt[0]) // capture selected wdata
+    wdata8 <= (cmd4_nxt[1]) ? rx1_axis_wdata8[7:0] : rx0_axis_wdata8[7:0];
 end
+
+// request handshake
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn)
+    req_rx0 <= 1'b0; // avoid X propagation
+  else if (rx0_axis_req & !req_rx0) // capture rx_req front edge
+    req_rx0 <= 1'b1;
+  else if (rx0_axis_ack & req_rx0)
+    req_rx0 <= 1'b0;
+end
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn)
+    req_rx1 <= 1'b0; // avoid X propagation
+  else if (rx1_axis_req & !req_rx1) // capture rx_req front edge
+    req_rx1 <= 1'b1;
+  else if (rx1_axis_ack & req_rx1)
+    req_rx1 <= 1'b0;
+end
+
+// request handshake
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn)
+    req_tx0 <= 1'b0; // avoid X propagation
+  else if (tx0_axis_req & !req_tx0) // capture tx_req front edge
+    req_tx0 <= 1'b1;
+  else if (tx0_axis_ack & req_tx0)
+    req_tx0 <= 1'b0;
+end
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn)
+    req_tx1 <= 1'b0; // avoid X propagation
+  else if (tx1_axis_req & !req_tx1) // capture tx_req front edge
+    req_tx1 <= 1'b1;
+  else if (tx1_axis_ack & req_tx1)
+    req_tx1 <= 1'b0;
+end
+
 
 // fsm decodes:
 // request signalling
@@ -292,8 +350,9 @@ wire rdone     = fsm_state[8];
 
 // IO Write Data
 assign iodata4_o = ({4{cmd_state}} & cmd4)
-                 | ({4{wdh_state}} & ((cmd4[1]) ? rx1_axis_wdata8[7:4] : rx0_axis_wdata8[7:4]))
-                 | ({4{wdl_state}} & ((cmd4[1]) ? rx1_axis_wdata8[3:0] : rx0_axis_wdata8[3:0]))
+                 | ({4{wdh_state}} & wdata8[7:4])
+                 | ({4{wdl_state}} & wdata8[3:0])
+                 | ({4{wdone}} & wdata8[3:0])
                  ;
 
 assign iodata4_e = {4{|(fsm_state[4:2])}};
