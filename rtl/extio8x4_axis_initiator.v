@@ -55,8 +55,12 @@ extio8x4_sync u_extio8x4_sync_ioack
   .sig_s(ioack_s)
   );
 
-extio8x4_sync u_extio8x4_sync_iodata0
-  (
+// async status on iodata4 is active-low so preset synchronizers to avoid spurious requests
+
+extio8x4_sync  # (
+  .RESET_VALUE(1'b1)
+  )
+  u_extio8x4_sync_iodata0 (
   .clk(clk),
   .resetn(resetn),
   .testmode(testmode),
@@ -64,8 +68,9 @@ extio8x4_sync u_extio8x4_sync_iodata0
   .sig_s(iodata4_s[0])
   );
 
-extio8x4_sync u_extio8x4_sync_iodata1
-  (
+extio8x4_sync  # (
+  .RESET_VALUE(1'b1)
+  ) u_extio8x4_sync_iodata1 (
   .clk(clk),
   .resetn(resetn),
   .testmode(testmode),
@@ -73,8 +78,9 @@ extio8x4_sync u_extio8x4_sync_iodata1
   .sig_s(iodata4_s[1])
   );
 
-extio8x4_sync u_extio8x4_sync_iodata2
-  (
+extio8x4_sync  # (
+  .RESET_VALUE(1'b1)
+  ) u_extio8x4_sync_iodata2 (
   .clk(clk),
   .resetn(resetn),
   .testmode(testmode),
@@ -82,8 +88,9 @@ extio8x4_sync u_extio8x4_sync_iodata2
   .sig_s(iodata4_s[2])
   );
 
-extio8x4_sync u_extio8x4_sync_iodata3
-  (
+extio8x4_sync   # (
+  .RESET_VALUE(1'b1)
+  ) u_extio8x4_sync_iodata3 (
   .clk(clk),
   .resetn(resetn),
   .testmode(testmode),
