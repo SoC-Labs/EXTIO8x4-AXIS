@@ -43,8 +43,10 @@ module extio8x4_ifsm
   input  wire       ioack_s
   );
 
+
 // Fair priority sequencer
 // return next 12 transactions - to support 1,2,3 and 4 requests 
+//extio8x4_ifsm_arb_scramble_patch.v
 function [23:0] FNpriority_seq12x2;
 input [3:0] req4;
 case (req4[3:0])
@@ -63,7 +65,7 @@ case (req4[3:0])
 4'b1101: FNpriority_seq12x2 = 24'b11_10_00_11_10_00_11_10_00_11_10_00; // chan 0/2/3
 4'b1110: FNpriority_seq12x2 = 24'b11_10_01_11_10_01_11_10_01_11_10_01; // chan 1/2/3
 4'b1111: FNpriority_seq12x2 = 24'b11_10_01_00_11_10_01_00_11_10_01_00; // chan 0/1/2/3
-default: FNpriority_seq12x2 = 24'b0; // (no requests)
+default: FNpriority_seq12x2 = 24'b00_00_00_00_00_00_00_00_00_00_00_00; // (no requests)
 endcase
 endfunction
 
@@ -263,12 +265,76 @@ end
 
 wire [3:0] cmd4_nxt;
 
+reg [4:0] hist_req0;
+reg [4:0] hist_req1;
+reg [4:0] hist_req2;
+reg [4:0] hist_req3;
+
+wire [3:0] active_ack4; // one of 4 decode
+assign active_ack4[0] = !cmd4_nxt[1] & !cmd4_nxt[0];
+assign active_ack4[1] = !cmd4_nxt[1] &  cmd4_nxt[0];
+assign active_ack4[2] =  cmd4_nxt[1] & !cmd4_nxt[0];
+assign active_ack4[3] =  cmd4_nxt[1] &  cmd4_nxt[0];
+
+wire [3:0] pending_req; // active but not acknowledged
+assign pending_req = active_req4 & ~active_ack4;
+
+// build binary weighted history of last 4 requests not yet granted
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn) begin
+    hist_req0 <= 5'b00000; // clear history
+    hist_req1 <= 5'b00000;
+    hist_req2 <= 5'b00000;
+    hist_req3 <= 5'b00000;
+    end
+  else if (start_xfer) begin
+    hist_req0 <= {pending_req[0],hist_req0[4:1]}; // req  history
+    hist_req1 <= {pending_req[1],hist_req1[4:1]};
+    hist_req2 <= {pending_req[2],hist_req2[4:1]};
+    hist_req3 <= {pending_req[3],hist_req3[4:1]};
+    cmd4 <= cmd4_nxt;
+    end
+end
+
+// binary weighted pending request fraction (bits 3:0)
+wire [3:0] pend_pri0 = (hist_req0[3:0]);
+wire [3:0] pend_pri1 = (hist_req1[3:0]);
+wire [3:0] pend_pri2 = (hist_req2[3:0]);
+wire [3:0] pend_pri3 = (hist_req3[3:0]);
+
+wire [3:0] pri_vote;
+// priority voting - ( > tests only win)
+assign pri_vote[0] = (pend_pri0 > pend_pri1)
+                   & (pend_pri0 > pend_pri2)
+                   & (pend_pri0 > pend_pri3)
+                   ;
+assign pri_vote[1] = (pend_pri1 > pend_pri0)
+                   & (pend_pri1 > pend_pri2)
+                   & (pend_pri1 > pend_pri3)
+                   ;
+assign pri_vote[2] = (pend_pri2 > pend_pri0)
+                   & (pend_pri2 > pend_pri1)
+                   & (pend_pri2 > pend_pri3)
+                   ;
+assign pri_vote[3] = (pend_pri3 > pend_pri0)
+                   & (pend_pri3 > pend_pri1)
+                   & (pend_pri3 > pend_pri2)
+                   ;
+
+wire [3:0] pri_req;
+assign pri_req = active_req4 & pri_vote; // priority from history
+
+// in case of dead heats, or Zero, modify priority
+wire [3:0] pri_mod;
+assign pri_mod = (|pri_req) ? pri_req : active_req4; // if no history
+
 // command resister
 always @(posedge clk or negedge resetn)
 begin
   if (!resetn)
     cmd4 <= 4'b0000; // invalid xfer pattern
-  else if (cmd4_req)
+  else if (start_xfer)
     cmd4 <= cmd4_nxt;
 end
 
@@ -278,10 +344,12 @@ end
 assign cmd4_nxt[0] =  (vrx0_req | vrx1_req); // Read/not-write always has priority
 assign cmd4_nxt[1] = !(vrx0_req | vtx0_req);
 */
-assign cmd4_nxt[1:0] = FNmap_patt2code2(FNpriority_seq12x2(active_req4), seq_cnt12);
+
+assign cmd4_nxt[1:0] = FNmap_patt2code2(FNpriority_seq12x2(pri_mod[3:0]), seq_cnt12);
+
 /* */
 
-assign cmd4_nxt[3:2] = 2'b00; // fixed 8-bit transfer 
+assign cmd4_nxt[3:2] = 2'b00; // fixed 8-bit transfer supported only
 
 // write data resister - for the committed channel
 reg [7:0] wdata8;

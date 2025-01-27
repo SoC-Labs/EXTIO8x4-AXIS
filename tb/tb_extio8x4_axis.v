@@ -77,11 +77,17 @@ initial begin
   wire       ioreq2;
   wire       ioack;
 
-wire end_of_file1;
-wire end_of_file2;
-wire end_of_file3;
-wire end_of_file4;
-wire end_of_file;
+wire M_end_of_file1;
+wire M_end_of_file2;
+//wire M_end_of_file3;
+//wire M_end_of_file4;
+wire M_end_of_file;
+
+wire S_end_of_file1;
+wire S_end_of_file2;
+//wire S_end_of_file3;
+//wire S_end_of_file4;
+wire S_end_of_file;
 
 assign testmode = 1'b0;
 
@@ -162,165 +168,265 @@ extio8x4_axis_target u_extio8x4_axis_target
   pullup(iodata4[ 2]);
   pullup(iodata4[ 3]);
 
-integer cycle_count;
-integer tx0_byte_count ;
-integer tx1_byte_count ;
-integer rx0_byte_count ;
-integer rx1_byte_count ;
+reg [15:0] cycle_count;
+integer M_tx0_byte_count ;
+integer M_tx1_byte_count ;
+integer M_rx0_byte_count ;
+integer M_rx1_byte_count ;
+integer S_tx0_byte_count ;
+integer S_tx1_byte_count ;
+integer S_rx0_byte_count ;
+integer S_rx1_byte_count ;
 
 always @(posedge clk or negedge resetn)
   if (!resetn)
-    cycle_count = 0;
+    cycle_count <= 0;
   else
-    cycle_count = cycle_count +1;
+    cycle_count <= cycle_count +1;
+
+// allow up to 32 cycles per transaction
+// up to 4 competing transactions per slot
+// test synchronized modulo 128
+
+wire start_reqs = !(|cycle_count[8:0]);     // 0-31
+wire [3:0] M_chan_ack;
+reg  [3:0] M_chan_req_en;
+always @(posedge clk or negedge resetn)
+  if (!resetn) begin
+      M_chan_req_en <= 4'b0000;
+    end
+  else begin
+    if (start_reqs)
+      M_chan_req_en <= (cycle_count[12:9] & ~M_chan_ack);
+    else if (M_chan_req_en[0] & M_chan_ack[0])
+      M_chan_req_en[0] <= 1'b0;
+    else if (M_chan_req_en[1] & M_chan_ack[1])
+      M_chan_req_en[1] <= 1'b0;
+    else if (M_chan_req_en[2] & M_chan_ack[2])
+      M_chan_req_en[2] <= 1'b0;
+    else if (M_chan_req_en[3] & M_chan_ack[3])
+      M_chan_req_en[3] <= 1'b0;
+  end
+
+wire [3:0] S_chan_ack;
+reg  [3:0] S_chan_req_en;
+always @(posedge clk or negedge resetn)
+  if (!resetn)
+    S_chan_req_en <= 4'b0000;
+  else begin
+    S_chan_req_en <= ~S_chan_ack;
+/*
+    if (start_reqs)
+      S_chan_req_en <=  (cycle_count[12:9] & ~S_chan_ack);
+    else if (S_chan_req_en[0] & S_chan_ack[0])
+      S_chan_req_en[0] <= 1'b0;
+    else if (S_chan_req_en[1] & S_chan_ack[1])
+      S_chan_req_en[1] <= 1'b0;
+    else if (S_chan_req_en[2] & S_chan_ack[2])
+      S_chan_req_en[2] <= 1'b0;
+    else if (S_chan_req_en[3] & S_chan_ack[3])
+      S_chan_req_en[3] <= 1'b0;
+*/
+  end
+
+// transfer byte counters
+always @(posedge clk or negedge resetn)
+  if (!resetn)
+    M_tx0_byte_count = 0;
+  else if (M_axis_tx0_tready & M_axis_tx0_tvalid)
+    M_tx0_byte_count = M_tx0_byte_count + 1;
 
 always @(posedge clk or negedge resetn)
   if (!resetn)
-    tx0_byte_count = 0;
-  else if (M_axis_tx0_tready & M_axis_tx0_tvalid)
-    tx0_byte_count = tx0_byte_count + 1;
-    
-always @(posedge clk or negedge resetn)
-  if (!resetn)
-    tx1_byte_count = 0;
+    M_tx1_byte_count = 0;
   else if (M_axis_tx1_tready & M_axis_tx1_tvalid)
-    tx1_byte_count = tx1_byte_count + 1;
-    
+    M_tx1_byte_count = M_tx1_byte_count + 1;
+
 always @(posedge clk or negedge resetn)
   if (!resetn)
-    rx0_byte_count = 0;
+    M_rx0_byte_count = 0;
   else if (M_axis_rx0_tready & M_axis_rx0_tvalid)
-    rx0_byte_count = rx0_byte_count + 1;
-    
+    M_rx0_byte_count = M_rx0_byte_count + 1;
+
 always @(posedge clk or negedge resetn)
   if (!resetn)
-    rx1_byte_count = 0;
+    M_rx1_byte_count = 0;
   else if (M_axis_rx1_tready & M_axis_rx1_tvalid)
-    rx1_byte_count = rx1_byte_count + 1;
-    
-    
+    M_rx1_byte_count = M_rx1_byte_count + 1;
+
+always @(posedge clk or negedge resetn)
+  if (!resetn)
+    S_tx0_byte_count = 0;
+  else if (S_axis_tx0_tready & S_axis_tx0_tvalid)
+    S_tx0_byte_count = S_tx0_byte_count + 1;
+
+always @(posedge clk or negedge resetn)
+  if (!resetn)
+    S_tx1_byte_count = 0;
+  else if (S_axis_tx1_tready & S_axis_tx1_tvalid)
+    S_tx1_byte_count = S_tx1_byte_count + 1;
+
+always @(posedge clk or negedge resetn)
+  if (!resetn)
+    S_rx0_byte_count = 0;
+  else if (S_axis_rx0_tready & S_axis_rx0_tvalid)
+    S_rx0_byte_count = S_rx0_byte_count + 1;
+
+always @(posedge clk or negedge resetn)
+  if (!resetn)
+    S_rx1_byte_count = 0;
+  else if (S_axis_rx1_tready & S_axis_rx1_tvalid)
+    S_rx1_byte_count = S_rx1_byte_count + 1;
+
+wire M_axis_rx0_tready1;
+wire M_axis_rx0_valid1;
+
 // Manager side testbench stream stinulus
   tb_axi_stream_io8_txd_from_file #(
     .TXDFILENAME(ASC_FILENAME)
-  ) u_tb_axi_stream_io_8_txd_from_file_chan0 (
+  ) u_tb_axi_stream_io_8_txd_from_file_M_chan0 (
     .aclk       (clk),
     .aresetn    (resetn),
-    .txd8_ready (M_axis_rx0_tready),
-    .txd8_valid (M_axis_rx0_tvalid),
+    .txd8_ready (M_axis_rx0_tready1),
+    .txd8_valid (M_axis_rx0_tvalid1),
     .txd8_data  (M_axis_rx0_tdata8)
   );
+
+  assign M_axis_rx0_tready1 = M_axis_rx0_tready & M_chan_req_en[0];
+  assign M_axis_rx0_tvalid  = M_axis_rx0_tvalid1 & M_chan_req_en[0];
+  assign M_chan_ack[0]      = (M_axis_rx0_tready & M_axis_rx0_tvalid);
+
+wire M_axis_tx0_tready1;
+wire M_axis_tx0_tvalid1;
+
   tb_axi_stream_io8_rxd_to_file#(
     .RXDFILENAME("M_rxd0_out.log")
-  ) u_tb_axi_stream_io_8_rxd_to_file_chan0 (
+  ) u_tb_axi_stream_io_8_rxd_to_file_M_chan0 (
     .aclk         (clk),
     .aresetn      (resetn),
-    .end_of_file  (end_of_file1),
-    .rxd8_ready   (M_axis_tx0_tready),
-    .rxd8_valid   (M_axis_tx0_tvalid),
+    .end_of_file  (M_end_of_file1),
+    .rxd8_ready   (M_axis_tx0_tready1),
+    .rxd8_valid   (M_axis_tx0_tvalid1),
     .rxd8_data    (M_axis_tx0_tdata8)
   );
+  assign M_axis_tx0_tvalid1 = M_axis_tx0_tvalid & M_chan_req_en[1];
+  assign M_axis_tx0_tready  = M_axis_tx0_tready1 & M_chan_req_en[1];
+  assign M_chan_ack[1] = (M_axis_tx0_tready & M_axis_tx0_tvalid);
+
+wire M_axis_rx1_tready1;
+wire M_axis_rx1_tvalid1;
 
 // Manager side testbench stream stinulus
   tb_axi_stream_io8_txd_from_file #(
     .TXDFILENAME(ASC_FILENAME)
-  ) u_tb_axi_stream_io_8_txd_from_file_chan1 (
+  ) u_tb_axi_stream_io_8_txd_from_file_M_chan1 (
     .aclk       (clk),
     .aresetn    (resetn),
-    .txd8_ready (M_axis_rx1_tready),
-    .txd8_valid (M_axis_rx1_tvalid),
+    .txd8_ready (M_axis_rx1_tready1),
+    .txd8_valid (M_axis_rx1_tvalid1),
     .txd8_data  (M_axis_rx1_tdata8)
   );
+
+  assign M_axis_rx1_tready1 = M_axis_rx1_tready & M_chan_req_en[2];
+  assign M_axis_rx1_tvalid  = M_axis_rx1_tvalid1 & M_chan_req_en[2];
+  assign M_chan_ack[2]      = (M_axis_rx1_tready & M_axis_rx1_tvalid);
+
+wire M_axis_tx1_tready1;
+wire M_axis_tx1_tvalid1;
+
   tb_axi_stream_io8_rxd_to_file#(
     .RXDFILENAME("M_rxd1_out.log")
-  ) u_tb_axi_stream_io_8_rxd_to_file_chan1 (
+  ) u_tb_axi_stream_io_8_rxd_to_file_M_chan1 (
     .aclk         (clk),
     .aresetn      (resetn),
-    .end_of_file  (end_of_file2),
-    .rxd8_ready   (M_axis_tx1_tready),
-    .rxd8_valid   (M_axis_tx1_tvalid),
+    .end_of_file  (M_end_of_file2),
+    .rxd8_ready   (M_axis_tx1_tready1),
+    .rxd8_valid   (M_axis_tx1_tvalid1),
     .rxd8_data    (M_axis_tx1_tdata8)
   );
+  assign M_axis_tx1_tvalid1 = M_axis_tx1_tvalid & M_chan_req_en[3];
+  assign M_axis_tx1_tready  = M_axis_tx1_tready1 & M_chan_req_en[3];
+  assign M_chan_ack[3] = (M_axis_tx1_tready & M_axis_tx1_tvalid);
 
 //assign end_of_file = end_of_file1 & end_of_file2 & end_of_file3 & end_of_file4;
-assign end_of_file = end_of_file3 & end_of_file4;
+assign M_end_of_file = M_end_of_file1 & M_end_of_file2;
 
-// Subordinate side echo
 
-/*
-  assign S_axis_tx0_tready = S_axis_rx0_tready;
-  assign S_axis_rx0_tvalid = S_axis_tx0_tvalid;
-  assign S_axis_rx0_tdata8 = S_axis_tx0_tdata8;
-  assign S_axis_tx1_tready = S_axis_rx1_tready;
-  assign S_axis_rx1_tvalid = S_axis_tx1_tvalid;
-  assign S_axis_rx1_tdata8 = S_axis_tx1_tdata8;
-*/
- // COMIO out buffer
-  tb_axi_stream_io8_buffer
-    u_tb_xi_stream_loop0 (
+// Subordinate side back-pressure tester
+
+wire S_axis_rx0_tready1;
+wire S_axis_rx0_tvalid1;
+
+// Manager side testbench stream stinulus
+  tb_axi_stream_io8_txd_from_file #(
+    .TXDFILENAME(ASC_FILENAME)
+  ) u_tb_axi_stream_io_8_txd_from_file_S_chan0 (
     .aclk       (clk),
     .aresetn    (resetn),
-    .rxd8_ready (S_axis_tx0_tready),
-    .rxd8_valid (S_axis_tx0_tvalid),
-    .rxd8_data  (S_axis_tx0_tdata8),
-    .txd8_ready (S_axis_rx0_tready),
-    .txd8_valid (S_axis_rx0_tvalid),
+    .txd8_ready (S_axis_rx0_tready1),
+    .txd8_valid (S_axis_rx0_tvalid1),
     .txd8_data  (S_axis_rx0_tdata8)
   );
 
-// COMIO out buffer
-  tb_axi_stream_io8_buffer
-    u_tb_xi_stream_loop1 (
-    .aclk       (clk),
-    .aresetn    (resetn),
-    .rxd8_ready (S_axis_tx1_tready),
-    .rxd8_valid (S_axis_tx1_tvalid),
-    .rxd8_data  (S_axis_tx1_tdata8),
-    .txd8_ready (S_axis_rx1_tready),
-    .txd8_valid (S_axis_rx1_tvalid),
-    .txd8_data  (S_axis_rx1_tdata8)
-  );
+  assign S_axis_rx0_tready1 = S_axis_rx0_tready & S_chan_req_en[0];
+  assign S_axis_rx0_tvalid  = S_axis_rx0_tvalid1 & S_chan_req_en[0];
+  assign S_chan_ack[0]      = (S_axis_rx0_tready & S_axis_rx0_tvalid);
+
+wire S_axis_tx0_tready1;
+wire S_axis_tx0_tvalid1;
 
   tb_axi_stream_io8_rxd_to_file#(
     .RXDFILENAME("S_rxd0_out.log")
-  ) u_tb_axi_stream_io_8_rxd_to_file_tx0 (
+  ) u_tb_axi_stream_io_8_rxd_to_file_S_chan0 (
     .aclk         (clk),
     .aresetn      (resetn),
-    .end_of_file  (end_of_file3),
-    .rxd8_ready   ( ), //S_axis_tx0_tready),
-    .rxd8_valid   (S_axis_tx0_tvalid & S_axis_tx0_tready),
+    .end_of_file  (S_end_of_file1),
+    .rxd8_ready   (S_axis_tx0_tready1),
+    .rxd8_valid   (S_axis_tx0_tvalid1), // & S_chan_req_en[1]),
     .rxd8_data    (S_axis_tx0_tdata8)
   );
+  assign S_axis_tx0_tvalid1 = S_axis_tx0_tvalid & S_chan_req_en[1];
+  assign S_axis_tx0_tready  = S_axis_tx0_tready1 & S_chan_req_en[1];
+  assign S_chan_ack[1] = (S_axis_tx0_tready & S_axis_tx0_tvalid);
+
+wire S_axis_rx1_tready1;
+wire S_axis_rx1_tvalid1;
+
+// Manager side testbench stream stinulus
+  tb_axi_stream_io8_txd_from_file #(
+    .TXDFILENAME(ASC_FILENAME)
+  ) u_tb_axi_stream_io_8_txd_from_file_S_chan1 (
+    .aclk       (clk),
+    .aresetn    (resetn),
+    .txd8_ready (S_axis_rx1_tready1),
+    .txd8_valid (S_axis_rx1_tvalid1),
+    .txd8_data  (S_axis_rx1_tdata8)
+  );
+
+  assign S_axis_rx1_tready1 = S_axis_rx1_tready & S_chan_req_en[2];
+  assign S_axis_rx1_tvalid  = S_axis_rx1_tvalid1 & S_chan_req_en[2];
+  assign S_chan_ack[2]      = (S_axis_rx1_tready & S_axis_rx1_tvalid);
+
+wire S_axis_tx1_tready1;
+wire S_axis_tx1_tvalid1;
 
   tb_axi_stream_io8_rxd_to_file#(
     .RXDFILENAME("S_rxd1_out.log")
-  ) u_tb_axi_stream_io_8_rxd_to_file_tx1 (
+  ) u_tb_axi_stream_io_8_rxd_to_file_S_chan1 (
     .aclk         (clk),
     .aresetn      (resetn),
-    .end_of_file  (end_of_file4),
-    .rxd8_ready   ( ), //S_axis_tx1_tready),
-    .rxd8_valid   (S_axis_tx1_tvalid & S_axis_tx1_tready),
+    .end_of_file  (S_end_of_file2),
+    .rxd8_ready   (S_axis_tx1_tready1),
+    .rxd8_valid   (S_axis_tx1_tvalid1), //  & S_chan_req_en[3]),
     .rxd8_data    (S_axis_tx1_tdata8)
   );
+  assign S_axis_tx1_tready  = S_axis_tx1_tready1 & S_chan_req_en[3];
+  assign S_axis_tx1_tvalid1 = S_axis_tx1_tvalid & S_chan_req_en[3];
+  assign S_chan_ack[3] = (S_axis_tx1_tready & S_axis_tx1_tvalid);
 
-  tb_axi_stream_io8_rxd_check_file#(
-    .FILENAME(ASC_FILENAME)
-  ) u_tb_axi_stream_io8_rxd0_check_file (
-    .aclk       (clk),
-    .aresetn    (resetn),
-    .rxd8_ready ( ), //S_axis_tx0_tready), 
-    .rxd8_valid (S_axis_tx0_tvalid & S_axis_tx0_tready),
-    .rxd8_data  (S_axis_tx0_tdata8)
-  );
+//assign end_of_file = end_of_file1 & end_of_file2 & end_of_file3 & end_of_file4;
+assign S_end_of_file = S_end_of_file1 & S_end_of_file2;
 
-  tb_axi_stream_io8_rxd_check_file#(
-    .FILENAME(ASC_FILENAME)
-  ) u_tb_axi_stream_io8_rxd1_check_file (
-    .aclk       (clk),
-    .aresetn    (resetn),
-    .rxd8_ready ( ), //S_axis_tx1_tready), 
-    .rxd8_valid (S_axis_tx1_tvalid & S_axis_tx1_tready),
-    .rxd8_data  (S_axis_tx1_tdata8)
-  );
 
 
 //-----------------------------------------------------------------------------
@@ -344,19 +450,24 @@ assign end_of_file = end_of_file3 & end_of_file4;
 
   assign clk = osc_q;
 
+
   assign resetn = !poreset;
 
   always @(posedge clk)
     begin // : eof_terminate
-      if (end_of_file) begin
+      if (M_end_of_file & S_end_of_file) begin
         #10000
         $display("EXTIO8x4 cycle count     = %d", cycle_count);
-        $display("EXTIO8x4 rx0 byte count  = %d", rx0_byte_count);
-        $display("EXTIO8x4 tx0 byte count  = %d", tx0_byte_count);
-        $display("EXTIO8x4 rx1 byte count  = %d", rx1_byte_count);
-        $display("EXTIO8x4 tx1 byte count  = %d", tx1_byte_count);
+        $display("EXTIO8x4 M rx0 byte count  = %d", M_rx0_byte_count);
+        $display("EXTIO8x4 M tx0 byte count  = %d", M_tx0_byte_count);
+        $display("EXTIO8x4 M rx1 byte count  = %d", M_rx1_byte_count);
+        $display("EXTIO8x4 M tx1 byte count  = %d", M_tx1_byte_count);
+        $display("EXTIO8x4 S rx0 byte count  = %d", S_rx0_byte_count);
+        $display("EXTIO8x4 S tx0 byte count  = %d", S_tx0_byte_count);
+        $display("EXTIO8x4 S rx1 byte count  = %d", S_rx1_byte_count);
+        $display("EXTIO8x4 S tx1 byte count  = %d", S_tx1_byte_count);
         $display("clocks per byte (approx) = %f",
-              (cycle_count/(rx0_byte_count+ rx1_byte_count + tx0_byte_count+tx1_byte_count)));
+              (cycle_count/(M_rx0_byte_count+ M_rx1_byte_count + M_tx0_byte_count+M_tx1_byte_count)));
         $finish();
         end
     end //
