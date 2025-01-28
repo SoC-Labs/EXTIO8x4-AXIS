@@ -293,7 +293,6 @@ begin
     hist_req1 <= {pending_req[1],hist_req1[4:1]};
     hist_req2 <= {pending_req[2],hist_req2[4:1]};
     hist_req3 <= {pending_req[3],hist_req3[4:1]};
-    cmd4 <= cmd4_nxt;
     end
 end
 
