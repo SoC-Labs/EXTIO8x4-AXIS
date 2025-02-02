@@ -7,7 +7,7 @@
 //
 // David Flynn (d.w.flynn@soton.ac.uk)
 //
-// Copyright (c) 2024, SoC Labs (www.soclabs.org)
+// Copyright (c) 2024-5, SoC Labs (www.soclabs.org)
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
@@ -265,10 +265,10 @@ end
 
 wire [3:0] cmd4_nxt;
 
-reg [4:0] hist_req0;
-reg [4:0] hist_req1;
-reg [4:0] hist_req2;
-reg [4:0] hist_req3;
+reg [2:0] hist_req0;
+reg [2:0] hist_req1;
+reg [2:0] hist_req2;
+reg [2:0] hist_req3;
 
 wire [3:0] active_ack4; // one of 4 decode
 assign active_ack4[0] = !cmd4_nxt[1] & !cmd4_nxt[0];
@@ -283,24 +283,24 @@ assign pending_req = active_req4 & ~active_ack4;
 always @(posedge clk or negedge resetn)
 begin
   if (!resetn) begin
-    hist_req0 <= 5'b00000; // clear history
-    hist_req1 <= 5'b00000;
-    hist_req2 <= 5'b00000;
-    hist_req3 <= 5'b00000;
+     hist_req0 <= 3'b000; // clear history
+    hist_req1 <= 3'b000;
+    hist_req2 <= 3'b000;
+    hist_req3 <= 3'b000;
     end
   else if (start_xfer) begin
-    hist_req0 <= {pending_req[0],hist_req0[4:1]}; // req  history
-    hist_req1 <= {pending_req[1],hist_req1[4:1]};
-    hist_req2 <= {pending_req[2],hist_req2[4:1]};
-    hist_req3 <= {pending_req[3],hist_req3[4:1]};
+    hist_req0 <= {pending_req[0],hist_req0[2:1]}; // req  history
+    hist_req1 <= {pending_req[1],hist_req1[2:1]};
+    hist_req2 <= {pending_req[2],hist_req2[2:1]};
+    hist_req3 <= {pending_req[3],hist_req3[2:1]};
     end
 end
 
-// binary weighted pending request fraction (bits 3:0)
-wire [3:0] pend_pri0 = (hist_req0[3:0]);
-wire [3:0] pend_pri1 = (hist_req1[3:0]);
-wire [3:0] pend_pri2 = (hist_req2[3:0]);
-wire [3:0] pend_pri3 = (hist_req3[3:0]);
+// binary weighted pending request fraction (bits 1:0)
+wire [1:0] pend_pri0 = (hist_req0[1:0]);
+wire [1:0] pend_pri1 = (hist_req1[1:0]);
+wire [1:0] pend_pri2 = (hist_req2[1:0]);
+wire [1:0] pend_pri3 = (hist_req3[1:0]);
 
 wire [3:0] pri_vote;
 // priority voting - ( > tests only win)
