@@ -50,18 +50,19 @@ Data
 
 ## Protocol
 
+4 8-bit AXI stream, two transmit and two receive channels virtualized over 4-bit bidirectional IO data physical channel with 3 handshake signals.
+
+The Initiator (implemented in the SoC) arbitates fairly to ensure all four AXI streams have fair access; the Target (implemented in FPGA, RPi pico PIO, or bit-banged 7-bit GPIO) provides the external "host" interface (ideally over USB or network).
+
+The target provides "host ready" status for each of the four virtual channels mapped onto the 4x byte-wide AXI stream ports. The initiator issues a 4-bit command and then transmits or receives 2 x 4-bit nibbles of data transfer - for the highest priority channel transfer that the target signals is ready.
+
+The protocol handles the tri-state bus handover between initiator and target s well as all data transfers using two request signals (from initiator, synchrnoised at target) and an acknowledge (from target, synchronised at initiator).
+
+To support asynchronous clocking of SoC initiator and external Host target the handshake signals are synchronised by two-stage synchronizers (_sync.v RTL components). The data is treated as synchronous due to protocol, _except_ in the case when the host provides virtual-channel-ready signals which are synchronized at the initiator during the status-phase of the protocol.
 
 
-#### Xilinx
-- Tool: Vivado 2019.2
-- Device: Kintex-7 (7k70tfbv676-1)
-- master:
-  - LUTs: -
-  - FFs: -
-  - Fmax: - MHz
-
-
-## Core Usage
+### Wavedrom protocol specifications
+to follow
 
 
 ## FuseSoC
@@ -137,7 +138,7 @@ The core has been implemented in Xilinx FPGA devices.
 - 99 slice Registers
 - 2 F7 Muxes
 - 100 MHz target
-
+~~~
 +----------+------+---------------------+
 | Ref Name | Used | Functional Category |
 +----------+------+---------------------+
@@ -154,3 +155,4 @@ The core has been implemented in Xilinx FPGA devices.
 | MUXF7    |    2 |               MuxFx |
 | BUFG     |    1 |               Clock |
 +----------+------+---------------------+
+~~~
