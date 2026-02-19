@@ -7,13 +7,18 @@ name : soclabs:nanosoc:extio8x4:1.0.0
 description: FuseSoc packaged simulation testbench for EXTIO8x4 IP and validation
 
 filesets:
-  rtl:
+  rtl_c:
     file_type : verilogSource
     files:
       - rtl/extio8x4_axis_initiator.v
-      - rtl/extio8x4_axis_target.v
-      - rtl/extio8x4_ifsm.v
       - rtl/extio8x4_sync.v
+      - rtl/extio8x4_ifsm.v
+
+  rtl_t:
+    file_type : verilogSource
+    files:
+      - rtl/extio8x4_axis_target.v
+      - rtl/extio8x4t_sync.v
       - rtl/extio8x4_tfsm.v
 
   tb:
@@ -56,12 +61,12 @@ parameters:
 targets:
   default:
     description: dummy build target (no testbench)
-    filesets: [rtl]
+    filesets: [rtl_c]
 
   lint:
     description: Lint tooling - not yet supported
     default_tool : spyglass
-    filesets : [rtl]
+    filesets : [rtl_c]
     tools:
       spyglass:
            mode : +lint
@@ -79,7 +84,7 @@ targets:
   fpga:
     description: FPGA implementation
     default_tool : vivado
-    filesets : [rtl]
+    filesets : [rtl_c]
     parameters:
 #      - POWER_PINS=1
       - ARM_UD_MODEL=1
@@ -89,7 +94,7 @@ targets:
   sim:
     description: RTL simulation testbench
     default_tool : vcs
-    filesets : [rtl, tb]
+    filesets : [rtl_c, rtl_t, tb]
     parameters:
 #      - POWER_PINS=1
       - ARM_UD_MODEL=1
@@ -126,7 +131,7 @@ targets:
   sim_gui:
     description: GUI interactive simulation testbench
     default_tool : vcs
-    filesets : [rtl, tb]
+    filesets : [rtl_c, rtl_t, tb]
     parameters:
 #      - POWER_PINS=1
       - ARM_UD_MODEL=1
@@ -164,6 +169,6 @@ targets:
   tb_nanosoc: &tb
     description: testbench build
     default_tool: vcs
-    filesets: [rtl, tb]
+    filesets: [rtl_c, rtl_t, tb]
     toplevel : tb_extio8x4_axis
 

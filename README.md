@@ -51,6 +51,7 @@ Data
 ## Protocol
 
 
+
 #### Xilinx
 - Tool: Vivado 2019.2
 - Device: Kintex-7 (7k70tfbv676-1)
@@ -121,18 +122,35 @@ fusesoc core show soclabs:nanosoc:extio8x4:1
 
 TBC
 
-### TSMC 180 nm ###
-Target frequency: 20 MHz
+### TSMC 65 nm ###
+Target frequency: 250 MHz
 Complete flow from RTL to placed gates. Automatic clock gating and scan
-insertion.
+insertion. TBC
 
 
 ## Implementation results - FPGA ##
 
 The core has been implemented in Xilinx FPGA devices.
 
-### Xilinx Artix 7 200T-3 ###
-- x slices
-- x regs
-- x MHz
+### Xilinx xc7vx485tffg1157-1 ###
+- 115 slice LUTs
+- 99 slice Registers
+- 2 F7 Muxes
+- 100 MHz target
 
++----------+------+---------------------+
+| Ref Name | Used | Functional Category |
++----------+------+---------------------+
+| FDCE     |   91 |        Flop & Latch |
+| LUT6     |   55 |                 LUT |
+| LUT5     |   38 |                 LUT |
+| OBUF     |   34 |                  IO |
+| IBUF     |   28 |                  IO |
+| LUT4     |   16 |                 LUT |
+| LUT3     |   12 |                 LUT |
+| FDPE     |    8 |        Flop & Latch |
+| LUT2     |    5 |                 LUT |
+| LUT1     |    3 |                 LUT |
+| MUXF7    |    2 |               MuxFx |
+| BUFG     |    1 |               Clock |
++----------+------+---------------------+

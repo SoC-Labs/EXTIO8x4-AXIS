@@ -187,7 +187,7 @@ always @(posedge C_clk or negedge resetn)
 // up to 4 competing transactions per slot
 // test synchronized modulo 128
 
-wire start_burst = !(|cycle_count[7:0]); // frame for 1-4 transactions
+wire start_burst = !(|cycle_count[7:0]); // start of test frame
 wire [3:0] C_chan_ack;
 reg  [3:0] C_chan_req_en;
 always @(posedge C_clk or negedge resetn)

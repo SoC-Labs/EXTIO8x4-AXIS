@@ -14,6 +14,7 @@
 // Abstract : Initiator FSM wrapped with synchronizers
 //-----------------------------------------------------------------------------
 
+// 'define IOCLKDIV 1
 
 module extio8x4_axis_initiator
   (
@@ -98,6 +99,20 @@ extio8x4_sync   # (
   .sig_s(iodata4_s[3])
   );
 
+wire ioclken;
+`ifdef IOCLKDIV
+extio8x4_sync u_extio8x4_ioclken_div2
+  (
+  .clk(clk),
+  .resetn(resetn),
+  .testmode(testmode),
+  .sig_a(!ioclken),
+  .sig_s(ioclken)
+  );
+`else
+  assign ioclken = 1'b1;
+`endif
+
 extio8x4_ifsm u_extio8x4_ifsm
   (
   .clk             ( clk             ),
@@ -116,6 +131,7 @@ extio8x4_ifsm u_extio8x4_ifsm
   .axis_tx1_tvalid ( axis_tx1_tvalid ),
   .axis_tx1_tdata8 ( axis_tx1_tdata8 ),
 // external io interface
+  .ioclken         ( ioclken         ),
   .iodata4_i       ( iodata4_a       ),
   .iodata4_s       ( iodata4_s       ),
   .iodata4_o       ( iodata4_o       ),
