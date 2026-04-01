@@ -11,93 +11,7 @@
 //-----------------------------------------------------------------------------
 
 //-----------------------------------------------------------------------------
-// Abstract : AXI-Stream TXD (output) port
-//-----------------------------------------------------------------------------
-
-module extio8x4_initiator_axis_txport
- #(
-    parameter    WIDTH = 8
-  )(
-  input  wire             clk,
-  input  wire             resetn,
-// state machine req/ack handshake
-  output wire             tx_req,
-  input  wire             tx_ack,
-  input  wire [WIDTH-1:0] tx_data,
-// AXI-Stream TX port
-  input  wire             axis_tx_tready,
-  output wire             axis_tx_tvalid,
-  output wire [WIDTH-1:0] axis_tx_tdata
-  );
-
-reg [WIDTH:0] tx_val_buffer;
-
-// axis TX port interface
-// Additional top bit holds TX valid status
-always @(posedge clk or negedge resetn)
-begin
-  if (!resetn)
-    tx_val_buffer <= {WIDTH{1'b0}};
-  else begin
-    if (!tx_val_buffer[WIDTH] & tx_ack) // load
-       tx_val_buffer <= {1'b1,tx_data[WIDTH-1:0]};
-    else if (tx_val_buffer[WIDTH] & axis_tx_tready) // unload
-       tx_val_buffer[WIDTH] <= 1'b0;
-    end
-end
-
-assign axis_tx_tvalid           =  tx_val_buffer[WIDTH]; //full
-assign axis_tx_tdata[WIDTH-1:0] =  tx_val_buffer[WIDTH-1:0];
-assign tx_req                   = !tx_val_buffer[WIDTH]; //empty
-
-endmodule
-
-
-//-----------------------------------------------------------------------------
-// Abstract : AXI-Stream RXD (input) port
-//-----------------------------------------------------------------------------
-
-module extio8x4_initiator_axis_rxport
- #(
-    parameter    WIDTH = 8
-  )(
-  input  wire             clk,
-  input  wire             resetn,
-// state machine req/ack handshake
-  output wire             rx_req,
-  input  wire             rx_ack,
-  output wire [WIDTH-1:0] rx_data,
-// AXI-Stream rx port
-  output wire             axis_rx_tready,
-  input  wire             axis_rx_tvalid,
-  input  wire [WIDTH-1:0] axis_rx_tdata
-  );
-
-reg [WIDTH:0] rx_val_buffer;
-
-// axis rx port interface
-// Additional top bit holds rx valid status
-always @(posedge clk or negedge resetn)
-begin
-  if (!resetn)
-    rx_val_buffer <= {WIDTH{1'b0}};
-  else begin
-    if (!rx_val_buffer[WIDTH] & axis_rx_tvalid) // load
-       rx_val_buffer <= {1'b1,axis_rx_tdata[WIDTH-1:0]};
-    else if (rx_val_buffer[WIDTH] & rx_ack) // unload
-       rx_val_buffer[WIDTH] <= 1'b0;
-    end
-end
-
-assign axis_rx_tready = !rx_val_buffer[WIDTH]; // empty
-assign rx_data        =  rx_val_buffer[WIDTH-1:0];
-assign rx_req         =  rx_val_buffer[WIDTH]; // full
-
-endmodule
-
-
-//-----------------------------------------------------------------------------
-// Abstract : Initiator (SOC) state machine and sequencer
+// Abstract : Initiator state machine and sequencer
 //-----------------------------------------------------------------------------
 
 
@@ -119,7 +33,6 @@ module extio8x4_ifsm
   output wire       axis_tx1_tvalid,
   output wire [7:0] axis_tx1_tdata8,
 // external io interface
-  input  wire       ioclken,
   input  wire [3:0] iodata4_i,
   input  wire [3:0] iodata4_s,
   output wire [3:0] iodata4_o,
@@ -131,61 +44,63 @@ module extio8x4_ifsm
   );
 
 
-// probability functions for fair arbitration
-wire [1:0] prob1in2; // in in two
-wire [2:0] prob1in3; // in in three
-wire [3:0] prob1in4; // one in four
-// derived from a 12-stage counter, advanced per transfer
-reg [3:0] seq_cnt12;
-
-// fair priority arbiter function given up to four requests to arbitrate
-function [3:0] FNpriority_sel;
+// Fair priority sequencer
+// return next 12 transactions - to support 1,2,3 and 4 requests 
+//extio8x4_ifsm_arb_scramble_patch.v
+function [23:0] FNpriority_seq12x2;
 input [3:0] req4;
-input [1:0] prob1in2;
-input [2:0] prob1in3;
-input [3:0] prob1in4;
 case (req4[3:0])
-4'b0001: FNpriority_sel = 4'b0001; // chan 0
-4'b0010: FNpriority_sel = 4'b0010; // chan 1
-4'b0011: FNpriority_sel = (prob1in2[0]) ? 4'b0001 : 4'b0010; // chan 0/1
-4'b0100: FNpriority_sel = 4'b0100; // chan 2
-4'b0101: FNpriority_sel = (prob1in2[0]) ? 4'b0001 : 4'b0100; // chan 0/2
-4'b0110: FNpriority_sel = (prob1in2[0]) ? 4'b0010 : 4'b0100; // chan 1/2
-4'b0111: FNpriority_sel = (prob1in3[0]) ? 4'b0001 : (prob1in3[1]) ? 4'b0010: 4'b0100; // chan 0/1/2
-4'b1000: FNpriority_sel = 4'b1000; // chan 3
-4'b1001: FNpriority_sel = (prob1in2[0]) ? 4'b0001 : 4'b1000; // chan 0/3
-4'b1010: FNpriority_sel = (prob1in2[0]) ? 4'b0010 : 4'b1000; // chan 1/3
-4'b1011: FNpriority_sel = (prob1in3[0]) ? 4'b0001 : (prob1in3[1]) ? 4'b0010: 4'b1000;// chan 0/1/3
-4'b1100: FNpriority_sel = (prob1in2[0]) ? 4'b0100 : 4'b1000; // chan 2/3
-4'b1101: FNpriority_sel = (prob1in3[0]) ? 4'b0001 : (prob1in3[1]) ? 4'b0100: 4'b1000; // chan 0/2/3
-4'b1110: FNpriority_sel = (prob1in3[0]) ? 4'b0010 : (prob1in3[1]) ? 4'b0100: 4'b1000; // chan 1/2/3
-4'b1111: FNpriority_sel = (prob1in4[0]) ? 4'b0001 : (prob1in4[1]) ? 4'b0010 : (prob1in4[2]) ? 4'b0100: 4'b1000; // chan 0/1/2/3
-default: FNpriority_sel = 4'b0000; // (no requests)
+4'b0001: FNpriority_seq12x2 = 24'b00_00_00_00_00_00_00_00_00_00_00_00; // chan 0
+4'b0010: FNpriority_seq12x2 = 24'b01_01_01_01_01_01_01_01_01_01_01_01; // chan 1
+4'b0011: FNpriority_seq12x2 = 24'b01_00_01_00_01_00_01_00_01_00_01_00; // chan 0/1
+4'b0100: FNpriority_seq12x2 = 24'b10_10_10_10_10_10_10_10_10_10_10_10; // chan 2
+4'b0101: FNpriority_seq12x2 = 24'b10_00_10_00_10_00_10_00_10_00_10_00; // chan 0/2
+4'b0110: FNpriority_seq12x2 = 24'b10_01_10_01_10_01_10_01_10_01_10_01; // chan 1/2
+4'b0111: FNpriority_seq12x2 = 24'b10_01_00_10_01_00_10_01_00_10_01_00; // chan 0/1/2
+4'b1000: FNpriority_seq12x2 = 24'b11_11_11_11_11_11_11_11_11_11_11_11; // chan 3
+4'b1001: FNpriority_seq12x2 = 24'b11_00_11_00_11_00_11_00_11_00_11_00; // chan 0/3
+4'b1010: FNpriority_seq12x2 = 24'b11_01_11_01_11_01_11_01_11_01_11_01; // chan 1/3
+4'b1011: FNpriority_seq12x2 = 24'b11_01_00_11_01_00_11_01_00_11_01_00; // chan 0/1/3
+4'b1100: FNpriority_seq12x2 = 24'b11_10_11_10_11_10_11_10_11_10_11_10; // chan 2/3
+4'b1101: FNpriority_seq12x2 = 24'b11_10_00_11_10_00_11_10_00_11_10_00; // chan 0/2/3
+4'b1110: FNpriority_seq12x2 = 24'b11_10_01_11_10_01_11_10_01_11_10_01; // chan 1/2/3
+4'b1111: FNpriority_seq12x2 = 24'b11_10_01_00_11_10_01_00_11_10_01_00; // chan 0/1/2/3
+default: FNpriority_seq12x2 = 24'b00_00_00_00_00_00_00_00_00_00_00_00; // (no requests)
 endcase
 endfunction
 
-// edge detecter on (synchronised IOACK)
-reg ack_r;
+function [1:0] FNmap_patt2code2;
+input [23:0] priority_seq12x2;
+input [3:0] seq12_no;
+case (seq12_no[3:0])
+4'b0000: FNmap_patt2code2 = priority_seq12x2[ 1: 0];
+4'b0001: FNmap_patt2code2 = priority_seq12x2[ 3: 2];
+4'b0010: FNmap_patt2code2 = priority_seq12x2[ 5: 4];
+4'b0011: FNmap_patt2code2 = priority_seq12x2[ 7: 6];
+4'b0100: FNmap_patt2code2 = priority_seq12x2[ 9: 8];
+4'b0101: FNmap_patt2code2 = priority_seq12x2[11:10];
+4'b0110: FNmap_patt2code2 = priority_seq12x2[13:12];
+4'b0111: FNmap_patt2code2 = priority_seq12x2[15:14];
+4'b1000: FNmap_patt2code2 = priority_seq12x2[17:16];
+4'b1001: FNmap_patt2code2 = priority_seq12x2[19:18];
+4'b1010: FNmap_patt2code2 = priority_seq12x2[21:20];
+4'b1011: FNmap_patt2code2 = priority_seq12x2[23:22];
+default: FNmap_patt2code2 = 2'b00; // (illegal seq no)
+endcase
+endfunction
+
+
+reg ack;
 always @(posedge clk or negedge resetn)
 begin
   if (!resetn)
-    ack_r <= 1'b0;
-  else if (ioclken)
-    ack_r <= ioack_s;
+    ack <= 1'b0;
+  else
+    ack <= ioack_s;
 end
-wire ack_change = ack_r ^ ioack_s;
 
-// *************************************************************
-//
-// XIO 4-channel, 8-bit virtual channel protocol
-//  Initiator Finte State Machine
-//
-//  ************************************************************
+wire ack_change = ack ^ ioack_s;
 
-// FSM states defined from the SOC Initiator perspective
-// Transmit commands and write data to target/Host
-// Receive status and read data from target/Host
-// and explciticly manage tri-state HIZ turnaround slots
 
 // state[0] = ioreq1
 // state[1] = ioreq2
@@ -195,47 +110,39 @@ wire ack_change = ack_r ^ ioack_s;
 // state[5] = WDONE
 // state[6] = RD4H_EN
 // state[7] = RD4L_EN
-// state[8] = RDONE
+// state[8] = RXDONE
 // state[9] = TX
 
-localparam STAZ = 10'b0_000_0000_00; // HiZ status phase
-localparam TXC1 = 10'b0_000_0000_01; // Initiate command nibble send
-localparam TXC2 = 10'b0_000_0001_11; // complete command nibble send
-localparam TXDH = 10'b0_000_0010_01; // send data hi-nibble
-localparam TXDL = 10'b0_000_0100_11; // send data lo-nibble
-localparam TXDZ = 10'b0_000_1000_01; // HiZ after send data
-localparam RXDH = 10'b1_001_0000_01; // request data hi-nibble
-localparam RXDL = 10'b1_010_0000_11; // request data lo-nibble
-localparam RXDZ = 10'b1_100_0000_01; // read data done
+localparam STAT = 10'b0_000_0000_00;
+localparam RXC1 = 10'b0_000_0000_01;
+localparam RXC2 = 10'b0_000_0001_11;                     
+localparam RXDH = 10'b0_001_0000_01;                     
+localparam RXDL = 10'b0_010_0000_11;                     
+localparam RXDZ = 10'b0_100_0000_01;                     
+localparam TXDH = 10'b1_000_0010_01;                     
+localparam TXDL = 10'b1_000_0100_11;                     
+localparam TXDZ = 10'b1_000_1000_01;                     
 
 reg  [9:0] fsm_state;
 reg  [9:0] nxt_fsm_state;
 
 reg [3:0] cmd4;
 
-// Commands supported are:
-// xx00 TX0 -> Host RX0
-// xx01 RX0 <- Hoxt TX0
-// xx10 TX1 -> Host RX1
-// xx11 RX1 <- Host TX1
-// CMD4[3:2] == 00 for byte, reserved for 01,10,11
-//  CMD4[0] = read
-//  CMD4[1] = chan1
 wire start_xfer;
 
 // ifsm next-state seqeuncer                                             
 always @(*)
   case (fsm_state)
-  STAZ: nxt_fsm_state = (!ioack_s & (start_xfer)) ? TXC1 : STAZ;
-  TXC1: nxt_fsm_state = ( ioack_s) ? TXC2 : TXC1;
-  TXC2: nxt_fsm_state = (!ioack_s) ? ((cmd4[0]) ? RXDH : TXDH) : TXC2;
-  TXDH: nxt_fsm_state = ( ioack_s) ? TXDL : TXDH;
-  TXDL: nxt_fsm_state = (!ioack_s) ? TXDZ : TXDL;
-  TXDZ: nxt_fsm_state = ( ioack_s) ? STAZ : TXDZ;
+  STAT: nxt_fsm_state = (!ioack_s & (start_xfer)) ? RXC1 : STAT;
+  RXC1: nxt_fsm_state = ( ioack_s) ? RXC2 : RXC1;
+  RXC2: nxt_fsm_state = (!ioack_s) ? ((cmd4[0]) ? RXDH : TXDH) : RXC2;
   RXDH: nxt_fsm_state = ( ioack_s) ? RXDL : RXDH;
   RXDL: nxt_fsm_state = (!ioack_s) ? RXDZ : RXDL;
-  RXDZ: nxt_fsm_state = ( ioack_s) ? STAZ : RXDZ;
-  default:  nxt_fsm_state = STAZ;
+  RXDZ: nxt_fsm_state = ( ioack_s) ? STAT : RXDZ;
+  TXDH: nxt_fsm_state = ( ioack_s) ? TXDL : TXDH;
+  TXDL: nxt_fsm_state = (!ioack_s) ? TXDZ : TXDL;
+  TXDZ: nxt_fsm_state = ( ioack_s) ? STAT : TXDZ;
+  default:  nxt_fsm_state = STAT;
   endcase
 
 // state update
@@ -243,13 +150,256 @@ always @(posedge clk or negedge resetn)
 begin
   if (!resetn) begin
     fsm_state <= 10'h000;
-  end else if (ioclken) begin
+  end else begin
     fsm_state <= nxt_fsm_state;
   end
 end
 
-// (synchrnoized) status valid to sample when RQ1 is low
 wire status_valid = !fsm_state[0];
+
+// stream buffers with valid qualifiers
+reg [8:0] rx0_reg9;
+reg [8:0] rx1_reg9;
+reg [8:0] tx0_reg9;
+reg [8:0] tx1_reg9;
+
+// axis request per channel to FSM, hold until ack
+wire rx0_axis_req;
+wire rx1_axis_req;
+wire tx0_axis_req;
+wire tx1_axis_req;
+// axis request acknowledge per channel, from FSM, 1-cycle pulse
+wire rx0_axis_ack;
+wire rx1_axis_ack;
+wire tx0_axis_ack;
+wire tx1_axis_ack;
+
+reg req_rx0;
+reg req_rx1;
+reg req_tx0;
+reg req_tx1;
+
+// data ports
+wire [7:0] tx_axis_rdata8;
+wire [7:0] rx0_axis_wdata8;
+wire [7:0] rx1_axis_wdata8;
+
+
+// axis RX1 port interface
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn)
+    rx0_reg9 <= 9'b0_00000000;
+  else begin
+    if (!rx0_reg9[8] & axis_rx0_tvalid) rx0_reg9 <= {1'b1,axis_rx0_tdata8[7:0]};
+    else if (rx0_reg9[8] & rx0_axis_ack)  rx0_reg9[8] <= 1'b0;
+    end
+end
+assign axis_rx0_tready = !rx0_reg9[8];
+assign rx0_axis_wdata8 =  rx0_reg9[7:0];
+assign rx0_axis_req    =  rx0_reg9[8];
+
+// axis RX2 port interface
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn)
+    rx1_reg9 <= 9'b0_00000000;
+  else begin
+    if (!rx1_reg9[8] & axis_rx1_tvalid) rx1_reg9 <= {1'b1,axis_rx1_tdata8[7:0]};
+    else if (rx1_reg9[8] & rx1_axis_ack)  rx1_reg9[8] <= 1'b0;
+    end
+end
+assign axis_rx1_tready = !rx1_reg9[8];
+assign rx1_axis_wdata8 =  rx1_reg9[7:0];
+assign rx1_axis_req    =  rx1_reg9[8];
+
+// axis TX1 port interface
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn)
+    tx0_reg9 <= 9'b0_00000000;
+  else begin
+    if (!tx0_reg9[8] & tx0_axis_ack) tx0_reg9 <= {1'b1,tx_axis_rdata8[7:0]};
+    else if (tx0_reg9[8] & axis_tx0_tready)  tx0_reg9[8] <= 1'b0;
+    end
+end
+assign axis_tx0_tvalid = tx0_reg9[8];
+assign axis_tx0_tdata8[7:0] = tx0_reg9[7:0];
+assign tx0_axis_req = !tx0_reg9[8];
+
+// axis tx2 port interextio8x4_ifsmface
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn)
+    tx1_reg9 <= 9'b0_00000000;
+  else begin
+    if (!tx1_reg9[8] & tx1_axis_ack) tx1_reg9 <= {1'b1,tx_axis_rdata8[7:0]};
+    else if (tx1_reg9[8] & axis_tx1_tready)  tx1_reg9[8] <= 1'b0;
+    end
+end
+assign axis_tx1_tvalid = tx1_reg9[8];
+assign axis_tx1_tdata8[7:0] = tx1_reg9[7:0];
+assign tx1_axis_req = !tx1_reg9[8];
+
+// virtual channel requests, only valid during status phase
+wire vtx0_req = status_valid & !iodata4_s[0] & req_tx0;
+wire vrx0_req = status_valid & !iodata4_s[1] & req_rx0;
+wire vtx1_req = status_valid & !iodata4_s[2] & req_tx1;
+wire vrx1_req = status_valid & !iodata4_s[3] & req_rx1;
+
+wire [3:0] active_req4 = {vtx1_req, vrx1_req, vtx0_req, vrx0_req};
+
+// any active request
+wire cmd4_req = (vtx0_req | vrx0_req | vtx1_req | vrx1_req);
+assign start_xfer = (cmd4_req & !ioack_s);
+
+// 12 cycle sequencer counter
+reg [3:0] seq_cnt12;
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn)
+    seq_cnt12 <= 4'b0000;
+  else
+    if (start_xfer) seq_cnt12 <= (seq_cnt12 >= 11) ? 4'b0000 : (seq_cnt12+4'b0001);
+end
+
+wire [3:0] cmd4_nxt;
+
+reg [2:0] hist_req0;
+reg [2:0] hist_req1;
+reg [2:0] hist_req2;
+reg [2:0] hist_req3;
+
+wire [3:0] active_ack4; // one of 4 decode
+assign active_ack4[0] = !cmd4_nxt[1] & !cmd4_nxt[0];
+assign active_ack4[1] = !cmd4_nxt[1] &  cmd4_nxt[0];
+assign active_ack4[2] =  cmd4_nxt[1] & !cmd4_nxt[0];
+assign active_ack4[3] =  cmd4_nxt[1] &  cmd4_nxt[0];
+
+wire [3:0] pending_req; // active but not acknowledged
+assign pending_req = active_req4 & ~active_ack4;
+
+// build binary weighted history of last 4 requests not yet granted
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn) begin
+    hist_req0 <= 3'b000; // clear history
+    hist_req1 <= 3'b000;
+    hist_req2 <= 3'b000;
+    hist_req3 <= 3'b000;
+    end
+  else if (start_xfer) begin
+    hist_req0 <= {pending_req[0],hist_req0[2:1]}; // req  history
+    hist_req1 <= {pending_req[1],hist_req1[2:1]};
+    hist_req2 <= {pending_req[2],hist_req2[2:1]};
+    hist_req3 <= {pending_req[3],hist_req3[2:1]};
+    end
+end
+
+// binary weighted pending request fraction (bits 1:0)
+wire [1:0] pend_pri0 = (hist_req0[1:0]);
+wire [1:0] pend_pri1 = (hist_req1[1:0]);
+wire [1:0] pend_pri2 = (hist_req2[1:0]);
+wire [1:0] pend_pri3 = (hist_req3[1:0]);
+
+wire [3:0] pri_vote;
+// priority voting - ( > tests only win)
+assign pri_vote[0] = (pend_pri0 > pend_pri1)
+                   & (pend_pri0 > pend_pri2)
+                   & (pend_pri0 > pend_pri3)
+                   ;
+assign pri_vote[1] = (pend_pri1 > pend_pri0)
+                   & (pend_pri1 > pend_pri2)
+                   & (pend_pri1 > pend_pri3)
+                   ;
+assign pri_vote[2] = (pend_pri2 > pend_pri0)
+                   & (pend_pri2 > pend_pri1)
+                   & (pend_pri2 > pend_pri3)
+                   ;
+assign pri_vote[3] = (pend_pri3 > pend_pri0)
+                   & (pend_pri3 > pend_pri1)
+                   & (pend_pri3 > pend_pri2)
+                   ;
+
+wire [3:0] pri_req;
+assign pri_req = active_req4 & pri_vote; // priority from history
+
+// in case of dead heats, or Zero, modify priority
+wire [3:0] pri_mod;
+assign pri_mod = (|pri_req) ? pri_req : active_req4; // if no history
+
+// command resister
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn)
+    cmd4 <= 4'b0000; // invalid xfer pattern
+  else if (start_xfer)
+    cmd4 <= cmd4_nxt;
+end
+
+
+// simplest fixed priority scheme: RX0, RX1, TX0, TX1 (decreasing)
+/*
+assign cmd4_nxt[0] =  (vrx0_req | vrx1_req); // Read/not-write always has priority
+assign cmd4_nxt[1] = !(vrx0_req | vtx0_req);
+*/
+
+assign cmd4_nxt[1:0] = FNmap_patt2code2(FNpriority_seq12x2(pri_mod[3:0]), seq_cnt12);
+
+/* */
+
+assign cmd4_nxt[3:2] = 2'b00; // fixed 8-bit transfer supported only
+
+// write data resister - for the committed channel
+reg [7:0] wdata8;
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn)
+    wdata8 <= 8'b00000000; // avoid X propagation
+  else if (start_xfer & !cmd4_nxt[0]) // capture selected wdata
+    wdata8 <= (cmd4_nxt[1]) ? rx1_axis_wdata8[7:0] : rx0_axis_wdata8[7:0];
+end
+
+// request handshake
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn)
+    req_rx0 <= 1'b0; // avoid X propagation
+  else if (rx0_axis_req & !req_rx0) // capture rx_req front edge
+    req_rx0 <= 1'b1;
+  else if (rx0_axis_ack & req_rx0)
+    req_rx0 <= 1'b0;
+end
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn)
+    req_rx1 <= 1'b0; // avoid X propagation
+  else if (rx1_axis_req & !req_rx1) // capture rx_req front edge
+    req_rx1 <= 1'b1;
+  else if (rx1_axis_ack & req_rx1)
+    req_rx1 <= 1'b0;
+end
+
+// request handshake
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn)
+    req_tx0 <= 1'b0; // avoid X propagation
+  else if (tx0_axis_req & !req_tx0) // capture tx_req front edge
+    req_tx0 <= 1'b1;
+  else if (tx0_axis_ack & req_tx0)
+    req_tx0 <= 1'b0;
+end
+always @(posedge clk or negedge resetn)
+begin
+  if (!resetn)
+    req_tx1 <= 1'b0; // avoid X propagation
+  else if (tx1_axis_req & !req_tx1) // capture tx_req front edge
+    req_tx1 <= 1'b1;
+  else if (tx1_axis_ack & req_tx1)
+    req_tx1 <= 1'b0;
+end
+
 
 // fsm decodes:
 // request signalling
@@ -265,31 +415,6 @@ wire rdh_state = fsm_state[6];
 wire rdl_state = fsm_state[7];
 wire rdone     = fsm_state[8];
 
-// axis request per channel to FSM, hold until ack
-wire rx0_xfer_req;
-wire rx1_xfer_req;
-wire tx0_xfer_req;
-wire tx1_xfer_req;
-// axis request acknowledge per channel, from FSM, 1-cycle pulse
-wire rx0_xfer_ack;
-wire rx1_xfer_ack;
-wire tx0_xfer_ack;
-wire tx1_xfer_ack;
-// AXI stream transfers pending
-reg pending_rx0;
-reg pending_rx1;
-reg pending_tx0;
-reg pending_tx1;
-
-reg [7:0] wdata8;
-reg [3:0] rd4_hi;
-reg [3:0] rd4_lo;
-
-// transfer data
-wire [7:0] tx_xfer_rdata8;
-wire [7:0] rx0_xfer_wdata8;
-wire [7:0] rx1_xfer_wdata8;
-
 // IO Write Data
 assign iodata4_o = ({4{cmd_state}} & cmd4)
                  | ({4{wdh_state}} & wdata8[7:4])
@@ -300,251 +425,35 @@ assign iodata4_o = ({4{cmd_state}} & cmd4)
 assign iodata4_e = {4{|(fsm_state[4:2])}};
 assign iodata4_t = ~iodata4_e;
 
-
-extio8x4_initiator_axis_txport # (
-  .WIDTH(8)
-  )
-  u_extio8x4_initiator_axis_txport0
-  (
-  .clk             ( clk             ),
-  .resetn          ( resetn          ),
-// 8-bit req/ack
-  .tx_req          ( tx0_xfer_req    ),
-  .tx_ack          ( tx0_xfer_ack    ),
-  .tx_data         ( tx_xfer_rdata8  ),
-// 8-bit AXI Stream port
-  .axis_tx_tready  ( axis_tx0_tready ),
-  .axis_tx_tvalid  ( axis_tx0_tvalid ),
-  .axis_tx_tdata   ( axis_tx0_tdata8 )
-  );
-
-extio8x4_initiator_axis_txport # (
-  .WIDTH(8)
-  )
-  u_extio8x4_initiator_axis_txport1
-  (
-  .clk             ( clk             ),
-  .resetn          ( resetn          ),
-// 8-bit req/ack
-  .tx_req          ( tx1_xfer_req    ),
-  .tx_ack          ( tx1_xfer_ack    ),
-  .tx_data         ( tx_xfer_rdata8  ),
-// 8-bit AXI Stream port
-  .axis_tx_tready  ( axis_tx1_tready ),
-  .axis_tx_tvalid  ( axis_tx1_tvalid ),
-  .axis_tx_tdata   ( axis_tx1_tdata8 )
-  );
-
-extio8x4_initiator_axis_rxport # (
-  .WIDTH(8)
-  )
-  u_extio8x4_initiator_axis_rxport0
-  (
-  .clk             ( clk             ),
-  .resetn          ( resetn          ),
-// 8-bit req/ack
-  .rx_req          ( rx0_xfer_req    ),
-  .rx_ack          ( rx0_xfer_ack    ),
-  .rx_data         ( rx0_xfer_wdata8 ),
-// 8-bit AXI Stream port
-  .axis_rx_tready  ( axis_rx0_tready ),
-  .axis_rx_tvalid  ( axis_rx0_tvalid ),
-  .axis_rx_tdata   ( axis_rx0_tdata8 )
-  );
-
-extio8x4_initiator_axis_rxport # (
-  .WIDTH(8)
-  )
-  u_extio8x4_initiator_axis_rxport1
-  (
-  .clk             ( clk             ),
-  .resetn          ( resetn          ),
-// 8-bit req/ack
-  .rx_req          ( rx1_xfer_req    ),
-  .rx_ack          ( rx1_xfer_ack    ),
-  .rx_data         ( rx1_xfer_wdata8 ),
-// 8-bit AXI Stream port
-  .axis_rx_tready  ( axis_rx1_tready ),
-  .axis_rx_tvalid  ( axis_rx1_tvalid ),
-  .axis_rx_tdata   ( axis_rx1_tdata8 )
-  );
-
-
-
-// virtual channel requests, only valid during status phase
-//  *Synchronized* channel ready & request to transfer
-wire vtx0_rdy = status_valid & !iodata4_s[0] & pending_tx0;
-wire vrx0_rdy = status_valid & !iodata4_s[1] & pending_rx0;
-wire vtx1_rdy = status_valid & !iodata4_s[2] & pending_tx1;
-wire vrx1_rdy = status_valid & !iodata4_s[3] & pending_rx1;
-
-// up to 4 active requests on all four channels
-wire [3:0] active_req4 = {vtx1_rdy, vrx1_rdy, vtx0_rdy, vrx0_rdy};
-wire [3:0] active_pri4; // the priority channels that need servicing
-wire [3:0] active_sel4; // the priority selected channel
-
-// any active request initiated a command request
-wire cmd_req = (vtx1_rdy | vrx1_rdy | vtx0_rdy | vrx0_rdy);
-assign start_xfer = (cmd_req & !ioack_s);
-
-// sequence counter for rotating arbitration priority
-// 12 cycle sequencer counter
-always @(posedge clk or negedge resetn)
-begin
-  if (!resetn)
-    seq_cnt12 <= 4'b0000;
-  else if (ioclken)
-    if (start_xfer) seq_cnt12 <= (seq_cnt12 >= 11) ? 4'b0000 : (seq_cnt12+4'b0001);
-end
-
-// proabability distributions derived
-assign prob1in2[0] = !seq_cnt12[0];
-assign prob1in2[1] =  seq_cnt12[0];
-assign prob1in3[0] = (seq_cnt12 == 0) | (seq_cnt12 == 3) | (seq_cnt12 == 6) | (seq_cnt12 == 9);
-assign prob1in3[1] = (seq_cnt12 == 1) | (seq_cnt12 == 4) | (seq_cnt12 == 7) | (seq_cnt12 == 10);
-assign prob1in3[2] = (seq_cnt12 == 2) | (seq_cnt12 == 5) | (seq_cnt12 == 8) | (seq_cnt12 == 11);
-assign prob1in4[0] = !seq_cnt12[1] & !seq_cnt12[0];
-assign prob1in4[1] = !seq_cnt12[1] &  seq_cnt12[0];
-assign prob1in4[2] =  seq_cnt12[1] & !seq_cnt12[0];
-assign prob1in4[3] =  seq_cnt12[1] &  seq_cnt12[0];
-
-wire [3:0] cmd4_nxt;
-
-// four-bit request history per channel
-reg [3:0] hist4_rq0;
-reg [3:0] hist4_rq1;
-reg [3:0] hist4_rq2;
-reg [3:0] hist4_rq3;
-
-wire [3:0] pending_req4; // active but not acknowledged
-assign pending_req4 = active_req4 & ~active_sel4;
-
-// build histogram of last 3 requests not yet granted
-// start as zero and push until serviced
-// 3-bit shift registers
-always @(posedge clk or negedge resetn)
-begin
-  if (!resetn) begin
-    hist4_rq0 <= 4'b0000; // clear history
-    hist4_rq1 <= 4'b0000;
-    hist4_rq2 <= 4'b0000;
-    hist4_rq3 <= 4'b0000;
-    end
-  else if ((ioclken) & start_xfer) begin
-    hist4_rq0 <= (pending_req4[0]) ? {hist4_rq0[2:0],1'b1} : 4'b0000; // req  history
-    hist4_rq1 <= (pending_req4[1]) ? {hist4_rq1[2:0],1'b1} : 4'b0000;
-    hist4_rq2 <= (pending_req4[2]) ? {hist4_rq2[2:0],1'b1} : 4'b0000;
-    hist4_rq3 <= (pending_req4[3]) ? {hist4_rq3[2:0],1'b1} : 4'b0000;
-    end
-end
-
-// bitwise OR history bits to determine max no of requests in contention
-wire [3:0] max_pending = hist4_rq0 | hist4_rq1 | hist4_rq2 | hist4_rq3;
-
-// priority to longest waiting requests
-assign active_pri4[3:0]
-          = (max_pending[3]) ? {hist4_rq3[3],hist4_rq2[3],hist4_rq1[3],hist4_rq0[3]}
-          : (max_pending[2]) ? {hist4_rq3[2],hist4_rq2[2],hist4_rq1[2],hist4_rq0[2]}
-          : (max_pending[1]) ? {hist4_rq3[1],hist4_rq2[1],hist4_rq1[1],hist4_rq0[1]}
-          : (max_pending[0]) ? {hist4_rq3[0],hist4_rq2[0],hist4_rq1[0],hist4_rq0[0]}
-          : active_req4
-          ;
-
-assign active_sel4[3:0] = FNpriority_sel(active_pri4,prob1in2,prob1in3,prob1in4);
-
-// resolve the command to issue depending on channel arbitration
-// decoded command bits [1:0]
-assign cmd4_nxt[0] =  active_sel4[1] | active_sel4[3]; // read command (else write)
-assign cmd4_nxt[1] =  active_sel4[2] | active_sel4[3]; // channel 1 (else channel 0)
-assign cmd4_nxt[3:2] = 2'b00; // fixed 8-bit transfer supported only
-
-// command resister
-always @(posedge clk or negedge resetn)
-begin
-  if (!resetn)
-    cmd4 <= 4'b0000; // invalid xfer pattern
-  else if ((ioclken) & start_xfer)
-    cmd4 <= cmd4_nxt;
-end
-
-// request handshake
-always @(posedge clk or negedge resetn)
-begin
-  if (!resetn)
-    pending_rx0 <= 1'b0; // avoid X propagation
-  else if (rx0_xfer_req & !pending_rx0) // capture rx_req front edge
-    pending_rx0 <= 1'b1;
-  else if (rx0_xfer_ack & pending_rx0)
-    pending_rx0 <= 1'b0;
-end
-always @(posedge clk or negedge resetn)
-begin
-  if (!resetn)
-    pending_rx1 <= 1'b0; // avoid X propagation
-  else if (rx1_xfer_req & !pending_rx1) // capture rx_req front edge
-    pending_rx1 <= 1'b1;
-  else if (rx1_xfer_ack & pending_rx1)
-    pending_rx1 <= 1'b0;
-end
-
 // and ack
-assign rx0_xfer_ack = (ioclken) & !cmd4[1] & !cmd4[0] & wdone & ack_change;
-assign rx1_xfer_ack = (ioclken) &  cmd4[1] & !cmd4[0] & wdone & ack_change;
-
-// request handshake
-always @(posedge clk or negedge resetn)
-begin
-  if (!resetn)
-    pending_tx0 <= 1'b0; // avoid X propagation
-  else if (tx0_xfer_req & !pending_tx0) // capture tx_req front edge
-    pending_tx0 <= 1'b1;
-  else if (tx0_xfer_ack & pending_tx0)
-    pending_tx0 <= 1'b0;
-end
-
-always @(posedge clk or negedge resetn)
-begin
-  if (!resetn)
-    pending_tx1 <= 1'b0; // avoid X propagation
-  else if (tx1_xfer_req & !pending_tx1) // capture tx_req front edge
-    pending_tx1 <= 1'b1;
-  else if (tx1_xfer_ack & pending_tx1)
-    pending_tx1 <= 1'b0;
-end
-
-// write data resister - for the committed channel
-always @(posedge clk or negedge resetn)
-begin
-  if (!resetn)
-    wdata8 <= 8'b00000000; // avoid X propagation
-  else if ((ioclken) & start_xfer & !cmd4_nxt[0]) // capture selected wdata
-    wdata8 <= (cmd4_nxt[1]) ? rx1_xfer_wdata8[7:0] : rx0_xfer_wdata8[7:0];
-end
+assign rx0_axis_ack = !cmd4[1] & !cmd4[0] & wdone & ack_change;
+assign rx1_axis_ack =  cmd4[1] & !cmd4[0] & wdone & ack_change;
 
 // IO Read data
-// first high nibble read data - async-data safe by protocol
+// first register high nibble read data
+reg [3:0] rd4_hi;
 always @(posedge clk or negedge resetn)
 begin
   if (!resetn)
     rd4_hi <= 4'b0000; // initialize
-  else if ((ioclken) & rdh_state & ack_change)
+  else if (rdh_state & ack_change)
     rd4_hi <= iodata4_i[3:0];
 end
 
-// second low nibble read data - async-data safe by protocol
+reg [3:0] rd4_lo;
 always @(posedge clk or negedge resetn)
 begin
   if (!resetn)
     rd4_lo <= 4'b0000; // initialize
-  else if ((ioclken) & rdl_state & ack_change)
+  else if (rdl_state & ack_change)
     rd4_lo <= iodata4_i[3:0];
 end
 
-assign tx_xfer_rdata8 = {rd4_hi[3:0],rd4_lo[3:0]};
+assign tx_axis_rdata8 = {rd4_hi[3:0],rd4_lo[3:0]};
 
 // then ack with 8-bit data to selected axis buffer
-assign tx0_xfer_ack = (ioclken) & !cmd4[1] &  cmd4[0] & rdone & ack_change;
-assign tx1_xfer_ack = (ioclken) &  cmd4[1] &  cmd4[0] & rdone & ack_change;
+assign tx0_axis_ack = !cmd4[1] &  cmd4[0] & rdone & ack_change;
+assign tx1_axis_ack =  cmd4[1] &  cmd4[0] & rdone & ack_change;
            
 endmodule
 
@@ -567,7 +476,6 @@ extio8x4_ifsm u_extio8x4_ifsm
   .axis_tx1_tvalid ( axis_tx1_tvalid ),
   .axis_tx1_tdata8 ( axis_tx1_tdata8 ),
 // external io interface
-  .ioclken         ( 1'b1            ) ,
   .iodata4_i       ( iodata4_i       ),
   .iodata4_s       ( iodata4_s       ),
   .iodata4_o       ( iodata4_o       ),
